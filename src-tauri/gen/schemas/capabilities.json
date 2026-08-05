@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Main window capabilities","local":true,"windows":["main"],"permissions":["core:default","core:window:allow-start-dragging","opener:default",{"identifier":"http:default","allow":[{"url":"http://localhost:11434/*"},{"url":"http://127.0.0.1:11434/*"},{"url":"https://**"}]}]}}
