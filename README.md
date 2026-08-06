@@ -1,5 +1,7 @@
 # PlantGPT
 
+![PlantGPT](docs/img/hero.png)
+
 Pixel-parity desktop clone of [ecogpt.com](https://ecogpt.com) ("Regenerative AI") built with
 Tauri v2 + React + Vite — except it's **100% local and free**: inference runs through
 [Ollama](https://ollama.com) on your own machine. No accounts, no keys, no cloud, no ads,
