@@ -1,9 +1,19 @@
-# PlantGPT (EcoGPT desktop clone)
+# PlantGPT
 
 Pixel-parity desktop clone of [ecogpt.com](https://ecogpt.com) ("Regenerative AI") built with
 Tauri v2 + React + Vite — except it's **100% local and free**: inference runs through
 [Ollama](https://ollama.com) on your own machine. No accounts, no keys, no cloud, no ads,
 no analytics, no cost.
+
+## Install
+
+1. Download the latest `PlantGPT_x.y.z_aarch64.dmg` from
+   [Releases](https://github.com/Blueturboguy07/plantgpt/releases/latest), open it, and drag
+   **PlantGPT** into Applications. The app is Developer ID–signed and notarized by Apple.
+2. Install [Ollama](https://ollama.com) and start it:
+   `brew install ollama && brew services start ollama`
+3. Pull a chat model: `ollama pull qwen2.5:3b` (or `qwen2.5:7b` if you have ≥16 GB RAM).
+4. Open PlantGPT — it finds Ollama at `localhost:11434` automatically.
 
 ## What's cloned (and what's upgraded)
 
@@ -18,11 +28,6 @@ no analytics, no cost.
 | Web search | ⬆️ free + local | DuckDuckGo HTML results fetched natively and fed as context |
 | Study mode | ⬆️ unlocked | tutoring system prompt (login-gated upstream) |
 | Login/ads/analytics | ❌ intentionally dropped | replaced by a Settings modal (model, theme, username) |
-
-## Requirements
-
-- macOS with [Ollama](https://ollama.com): `brew install ollama && brew services start ollama`
-- At least one chat model: `ollama pull qwen2.5:3b` (or `qwen2.5:7b`, etc.)
 
 ## Develop
 
