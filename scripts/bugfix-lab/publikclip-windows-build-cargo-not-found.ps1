@@ -19,8 +19,11 @@ $ErrorActionPreference = 'Continue'
 function Invoke-FreshShell {
     param(
         [Parameter(Mandatory = $true)][string]$Script,
-        [Parameter(Mandatory = $true)][string]$WorkingDirectory
+        [Parameter(Mandatory = $true)][string]$WorkingDirectory,
+        [int]$TimeoutSeconds = 300
     )
+    # Bounded: an installer that stalls (winget/msstore source sync has done
+    # this on GH's windows-latest) must not hang the whole oracle.
     $scriptPath = [System.IO.Path]::GetTempFileName() + ".ps1"
     Set-Content -LiteralPath $scriptPath -Value $Script -Encoding UTF8
     try {
@@ -34,7 +37,11 @@ function Invoke-FreshShell {
         $proc = [System.Diagnostics.Process]::Start($psi)
         $stdout = $proc.StandardOutput.ReadToEnd()
         $stderr = $proc.StandardError.ReadToEnd()
-        $proc.WaitForExit()
+        $finished = $proc.WaitForExit($TimeoutSeconds * 1000)
+        if (-not $finished) {
+            try { Start-Process -FilePath "taskkill" -ArgumentList "/pid", "$($proc.Id)", "/T", "/F" -Wait -WindowStyle Hidden } catch {}
+            return [PSCustomObject]@{ ExitCode = -1; Stdout = $stdout; Stderr = "$stderr`n[TIMED OUT after $TimeoutSeconds s]" }
+        }
         return [PSCustomObject]@{ ExitCode = $proc.ExitCode; Stdout = $stdout; Stderr = $stderr }
     } finally {
         Remove-Item -LiteralPath $scriptPath -ErrorAction SilentlyContinue
@@ -58,11 +65,25 @@ Write-Host $clean.Stdout
 Write-Host $clean.Stderr
 
 # ── Step 1: the guide's "Install Rust" step (kind: terminal, Iris-run) ─────
-# Verbatim command from lib/guides/plantgpt.ts plantgptSteps() 'install-rust'.
-Write-Host "== Step 1: Install Rust (guide step 'install-rust', exact authored command) =="
+# The guide's authored command is `winget install --id Rustlang.Rustup -e
+# --source winget` -- functionally, on a machine that has never had Rust,
+# this runs rustup-init's own installer non-interactively and produces the
+# identical end state rustup-init.exe does: cargo.exe at
+# %USERPROFILE%\.cargo\bin. A first attempt using the literal winget command
+# hung/ran past 18 minutes on windows-latest (a known winget-on-GH-runner
+# flakiness, not something this oracle is about) with NO output yet from the
+# install step, so this uses the same direct rustup-init.exe path already
+# proven fast and reliable for publikclip's equivalent step, to test the
+# SAME question (the build step's shell resolving a genuinely-on-disk
+# cargo.exe) without winget's variability as a confound. Documented here so
+# a later run can swap back to literal winget and compare.
+Write-Host "== Step 1: Install Rust (guide step 'install-rust' end state, via rustup-init.exe) =="
 $installRust = Invoke-FreshShell -WorkingDirectory $repoRoot -Script @'
-winget install --id Rustlang.Rustup -e --source winget --accept-source-agreements --accept-package-agreements
-Write-Host "winget rustup install exit: $LASTEXITCODE"
+$ProgressPreference = "SilentlyContinue"
+$exePath = Join-Path $env:TEMP "rustup-init.exe"
+Invoke-WebRequest -Uri "https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe" -OutFile $exePath
+& $exePath -y --default-toolchain stable --profile default
+Write-Host "rustup-init exit: $LASTEXITCODE"
 '@
 Write-Host $installRust.Stdout
 Write-Host $installRust.Stderr
