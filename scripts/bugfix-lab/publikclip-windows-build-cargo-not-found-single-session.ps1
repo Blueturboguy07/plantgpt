@@ -79,6 +79,13 @@ Remove-Item -Recurse -Force "$env:USERPROFILE\.rustup" -ErrorAction SilentlyCont
 $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
 $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 $env:Path = "$machinePath;$userPath"
+# If the CI image left a %USERPROFILE%\.cargo\bin entry behind in the registry PATH,
+# drop it: the reader's window was opened at step 3 on a PC that had never had Rust, so
+# no such entry can be in it. Same category of correction as uninstalling the toolchain.
+$before = $env:Path
+$env:Path = (($env:Path -split ';') | Where-Object { $_ -and ($_ -notlike '*\.cargo\bin*') }) -join ';'
+if ($before -ne $env:Path) { Say "removed a leftover .cargo\bin entry the CI image had in the registry PATH" }
+
 Say "session PATH (as a freshly opened PowerShell would see it):"
 Write-Host $env:Path
 
