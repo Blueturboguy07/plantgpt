@@ -7,16 +7,17 @@ on:
       - fix/publikclip-windows-build-cargo-not-found
 
 jobs:
-  oracle:
+  # Attempt 2 oracle: the whole guide in ONE PowerShell session (the web reader's model).
+  # Deliberately NO actions/setup-node -- setup-node injects PATH through the runner's
+  # process env only, and this oracle rebuilds the session PATH from the registry the way
+  # a freshly opened PowerShell does. windows-latest carries Node and Git in the machine
+  # PATH, which is also what a reader gets from guide steps 1-2 (git-scm / nodejs.org).
+  oracle-single-session:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Run oracle
+      - name: Run oracle (single continuous PowerShell session)
         shell: pwsh
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/bugfix-lab/publikclip-windows-build-cargo-not-found.ps1
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/bugfix-lab/publikclip-windows-build-cargo-not-found-single-session.ps1
