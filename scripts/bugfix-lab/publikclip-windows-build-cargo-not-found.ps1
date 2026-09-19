@@ -24,6 +24,14 @@ function Invoke-FreshShell {
     )
     # Bounded: an installer that stalls (winget/msstore source sync has done
     # this on GH's windows-latest) must not hang the whole oracle.
+    # IMPORTANT: read stdout/stderr ASYNCHRONOUSLY via event handlers, never
+    # via a blocking ReadToEnd() before the process exits -- if the child
+    # writes enough to stderr to fill the OS pipe buffer while stdout is
+    # still being drained (verbose npm/cargo/winget output), the child
+    # blocks on stderr and we block on stdout: a classic .NET Process
+    # deadlock no WaitForExit(timeout) can reach, since it runs after the
+    # blocking reads. Confirmed against two real stuck CI runs on this
+    # cluster (35436739291, 35436736873: 20+ min, zero output).
     $scriptPath = [System.IO.Path]::GetTempFileName() + ".ps1"
     Set-Content -LiteralPath $scriptPath -Value $Script -Encoding UTF8
     try {
@@ -34,12 +42,35 @@ function Invoke-FreshShell {
         $psi.RedirectStandardOutput = $true
         $psi.RedirectStandardError = $true
         $psi.UseShellExecute = $false
-        $proc = [System.Diagnostics.Process]::Start($psi)
-        $stdout = $proc.StandardOutput.ReadToEnd()
-        $stderr = $proc.StandardError.ReadToEnd()
+
+        $proc = New-Object System.Diagnostics.Process
+        $proc.StartInfo = $psi
+        $outBuilder = New-Object System.Text.StringBuilder
+        $errBuilder = New-Object System.Text.StringBuilder
+        $outEvent = Register-ObjectEvent -InputObject $proc -EventName OutputDataReceived -Action {
+            if ($null -ne $EventArgs.Data) { [void]$Event.MessageData.AppendLine($EventArgs.Data) }
+        } -MessageData $outBuilder
+        $errEvent = Register-ObjectEvent -InputObject $proc -EventName ErrorDataReceived -Action {
+            if ($null -ne $EventArgs.Data) { [void]$Event.MessageData.AppendLine($EventArgs.Data) }
+        } -MessageData $errBuilder
+
+        [void]$proc.Start()
+        $proc.BeginOutputReadLine()
+        $proc.BeginErrorReadLine()
         $finished = $proc.WaitForExit($TimeoutSeconds * 1000)
+
         if (-not $finished) {
             try { Start-Process -FilePath "taskkill" -ArgumentList "/pid", "$($proc.Id)", "/T", "/F" -Wait -WindowStyle Hidden } catch {}
+            Start-Sleep -Seconds 2
+        }
+        Unregister-Event -SourceIdentifier $outEvent.Name -ErrorAction SilentlyContinue
+        Unregister-Event -SourceIdentifier $errEvent.Name -ErrorAction SilentlyContinue
+        Remove-Job -Name $outEvent.Name -ErrorAction SilentlyContinue
+        Remove-Job -Name $errEvent.Name -ErrorAction SilentlyContinue
+
+        $stdout = $outBuilder.ToString()
+        $stderr = $errBuilder.ToString()
+        if (-not $finished) {
             return [PSCustomObject]@{ ExitCode = -1; Stdout = $stdout; Stderr = "$stderr`n[TIMED OUT after $TimeoutSeconds s]" }
         }
         return [PSCustomObject]@{ ExitCode = $proc.ExitCode; Stdout = $stdout; Stderr = $stderr }
