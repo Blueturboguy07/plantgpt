@@ -10,11 +10,16 @@
 # repairs the very defect under test; that is the Iris-autopilot execution model, not
 # this population's).
 #
-# Guide text used is the LIVE one, fetched from
-#   https://publikhq.com/api/iris/guides/plantgpt   (version 8, sourceCommit 0e2cf7ae118beee65d9a07c1659de2b2ab4b85cd)
+# Guide text: sourceCommit pin is unchanged (0e2cf7ae118beee65d9a07c1659de2b2ab4b85cd, still
+# plantgpt main tip), but the "build" step's command was fixed on fix/publikclip-windows-
+# build-cargo-not-found in ~publik (lib/guides/plantgpt.ts, version 8 -> 9) to mirror
+# publikclip.ts's PATH-insurance line. This harness's step 8 below is kept byte-for-byte in
+# sync with that new command (there is no live redeploy to fetch from mid-fix):
 #   step 6 install-rust : winget install --id Rustlang.Rustup -e --source winget
 #   step 7 clone        : clone + git checkout 0e2cf7ae118beee65d9a07c1659de2b2ab4b85cd
-#   step 8 build        : npm.cmd install  /  npm.cmd run tauri build     (NO PATH insurance)
+#   step 8 build (v9)   : npm.cmd install
+#                          $env:Path = "$env:USERPROFILE\.cargo\bin;$env:LOCALAPPDATA\Microsoft\WinGet\Links;$env:Path"
+#                          npm.cmd run tauri build
 #
 # Exit 1 = bug PRESENT : step 8 prints
 #          "failed to run command cargo metadata --no-deps --format-version 1: program not found"
@@ -173,8 +178,15 @@ Say "HEAD: $(git rev-parse HEAD)"
 Say "cwd: $((Get-Location).Path)"
 
 # ---------------------------------------------------------------------------
-# GUIDE STEP 8 -- "Build PlantGPT": npm.cmd install / npm.cmd run tauri build
-# VERBATIM, in the SAME session, which is exactly what the guide instructs.
+# GUIDE STEP 8 -- "Build PlantGPT" (plantgpt.ts v9), VERBATIM 3-line command,
+# in the SAME session, which is exactly what the guide instructs:
+#   npm.cmd install
+#   $env:Path = "$env:USERPROFILE\.cargo\bin;$env:LOCALAPPDATA\Microsoft\WinGet\Links;$env:Path"
+#   npm.cmd run tauri build
+# The middle line is a PowerShell statement, not an external command -- a
+# reader's terminal runs it inline in their own session, so it must run
+# inline HERE too (not via Run-Bounded, which spawns a child process and
+# could not mutate this process's own environment block).
 # ---------------------------------------------------------------------------
 Say "=== GUIDE STEP 8 line 1: npm.cmd install ==="
 $npm = Run-Bounded -File "npm.cmd" -ArgList @('install') -TimeoutSeconds 600 -Tag "step8-npm-install"
@@ -185,7 +197,11 @@ if ($npm.ExitCode -ne 0) {
     exit 2
 }
 
-Say "=== GUIDE STEP 8 line 2: npm.cmd run tauri build ==="
+Say "=== GUIDE STEP 8 line 2 (v9, PATH insurance): env:Path = ...cargo\bin;...WinGet\Links;... ==="
+$env:Path = "$env:USERPROFILE\.cargo\bin;$env:LOCALAPPDATA\Microsoft\WinGet\Links;$env:Path"
+Say "cargo resolvable in THIS session right after the PATH insurance line: $([bool](Get-Command cargo -ErrorAction SilentlyContinue))"
+
+Say "=== GUIDE STEP 8 line 3: npm.cmd run tauri build ==="
 $build = Run-Bounded -File "npm.cmd" -ArgList @('run', 'tauri', 'build') -TimeoutSeconds 600 -Tag "step8-tauri-build"
 Write-Host "----- step 8 build output -----"
 Write-Host $build.Output
