@@ -47,10 +47,34 @@ foreach ($d in $msvcToolDirs) {
     }
 }
 $remainingLinkers = Get-ChildItem -Path 'C:\Program Files*\Microsoft Visual Studio' -Recurse -Filter 'link.exe' -ErrorAction SilentlyContinue
-Say "link.exe copies found after hiding: $($remainingLinkers.Count)"
+Say "link.exe copies found after hiding VC\Tools\MSVC: $($remainingLinkers.Count)"
 $remainingLinkers | ForEach-Object { Say "  $($_.FullName)" }
+
+# The recursive VS-tree rename above only removes the copies MSVC-detection logic finds via
+# vswhere/registry. Some runner images also carry an unrelated file also named link.exe
+# (e.g. Git for Windows' coreutils `link.exe`, a hard-link utility, or an old ScopeCppSDK
+# copy) directly on PATH, which a bare PATH search finds regardless of vswhere. Hide any of
+# those too -- this is what determines what `Get-Command link.exe` / a bare `link.exe`
+# invocation on the command line actually resolves to, same as on a real reporter machine
+# with no MSVC linker at all.
+$hiddenOnPath = @()
+foreach ($dir in ($env:PATH -split ';' | Where-Object { $_ -ne '' })) {
+    $candidate = Join-Path $dir 'link.exe'
+    if (Test-Path $candidate -PathType Leaf) {
+        $hiddenOnPath += $candidate
+        Say "hiding PATH link.exe: $candidate"
+        try {
+            Rename-Item -Path $candidate -NewName 'link.exe.hidden_by_bugfix_lab' -ErrorAction Stop
+        } catch {
+            Say "  rename failed: $_"
+        }
+    }
+}
+Say "link.exe files hidden directly from PATH dirs: $($hiddenOnPath.Count)"
+
 $linkOnPath = Get-Command link.exe -ErrorAction SilentlyContinue
 Say "link.exe on PATH right now: $($linkOnPath -ne $null)"
+if ($linkOnPath) { Say "  resolves to: $($linkOnPath.Source)" }
 
 Say "=== Step 4 (guide, verbatim): Install Rust ==="
 Say "command: winget install --id Rustlang.Rustup -e --source winget"
@@ -69,7 +93,9 @@ cargo --version
 Say "cargo --version exit code: $LASTEXITCODE"
 Say "rustc --version:"
 rustc --version
-Say "link.exe on PATH after Rust install: $((Get-Command link.exe -ErrorAction SilentlyContinue) -ne $null)"
+$linkAfterRust = Get-Command link.exe -ErrorAction SilentlyContinue
+Say "link.exe on PATH after Rust install: $($linkAfterRust -ne $null)"
+if ($linkAfterRust) { Say "  resolves to: $($linkAfterRust.Source)" }
 
 Say "=== Step 5 (guide, verbatim): Get PlantGPT ==="
 Set-Location ~
