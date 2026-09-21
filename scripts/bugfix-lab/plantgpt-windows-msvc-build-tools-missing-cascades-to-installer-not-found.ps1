@@ -113,11 +113,12 @@ $buildExit = $LASTEXITCODE
 Say "build exit code: $buildExit"
 
 Say "=== Step 7 (guide, verbatim): Run the installer ==="
-$setup = Get-ChildItem src-tauri\target\release\bundle\nsis -Filter *-setup.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+$installerErr = $null
+$setup = Get-ChildItem src-tauri\target\release\bundle\nsis -Filter *-setup.exe -ErrorVariable installerErr -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($setup) {
     Say "INSTALLER_FOUND: $($setup.FullName)"
 } else {
-    Say "INSTALLER_NOT_FOUND: Get-ChildItem : Cannot find path 'src-tauri\target\release\bundle\nsis' because it does not exist."
+    Say "INSTALLER_NOT_FOUND. Native error: $installerErr"
 }
 
 $log = Get-Content $buildLog -Raw -ErrorAction SilentlyContinue
