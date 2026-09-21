@@ -1,0 +1,15 @@
+name: bugfix-lab
+
+on:
+  workflow_dispatch:
+
+jobs:
+  oracle:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run oracle recipe
+        shell: pwsh
+        run: |
+          ./scripts/bugfix-lab/plantgpt-windows-msvc-build-tools-missing-cascades-to-installer-not-found.ps1
