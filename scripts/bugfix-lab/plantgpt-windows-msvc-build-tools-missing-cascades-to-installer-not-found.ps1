@@ -1,10 +1,18 @@
 # bugfix-lab oracle recipe for cluster:
 #   plantgpt-windows-msvc-build-tools-missing-cascades-to-installer-not-found
 #
-# Runs the plantgpt guide's Windows branch steps 4-7 (lib/guides/plantgpt.ts, sourceCommit
-# 0e2cf7ae118beee65d9a07c1659de2b2ab4b85cd) VERBATIM, non-interactively, to see whether step 4
-# ("Install Rust" -> `winget install --id Rustlang.Rustup -e --source winget`) leaves the machine
-# with a working MSVC linker, the same way a reporter's own machine would need to.
+# Runs the plantgpt guide's Windows branch steps 4-8 (lib/guides/plantgpt.ts, sourceCommit
+# 0e2cf7ae118beee65d9a07c1659de2b2ab4b85cd) VERBATIM, non-interactively, to see whether the
+# toolchain steps leave the machine with a working MSVC linker before the build runs, the same
+# way a reporter's own machine would need to.
+#
+# FIX round 1 (2026-09-21): the guide gained a new step 4, "install-build-tools"
+# (`winget install --id Microsoft.VisualStudio.2022.BuildTools ... --override "...
+# Microsoft.VisualStudio.Workload.VCTools..."`), ahead of the pre-existing "Install Rust" step
+# (now step 5). Both are pasted here verbatim from the fix branch's rendered guide output --
+# see the comment directly above the first winget call below. Steps 0a/0b (hiding the runner's
+# preinstalled MSVC toolset) and the pass/fail verdict at the bottom are UNCHANGED from the
+# REPRODUCE/MINIMIZE stages.
 #
 # GH-hosted windows-latest runners ship with a full Visual Studio (incl. the VC++ toolset)
 # preinstalled, unlike a typical reporter's fresh Windows machine, so step 0 here hides the
@@ -14,7 +22,8 @@
 # does.
 #
 # Exit contract: 1 = bug PRESENT (MSVC-linker-missing note appears during the build), 0 = bug
-# ABSENT (build finishes and step 7 finds an installer), 2 = oracle could not determine.
+# ABSENT (build finishes and the run-the-installer step finds an installer), 2 = oracle could
+# not determine.
 
 $ErrorActionPreference = 'Continue'
 $logDir = "$env:RUNNER_TEMP\bugfix-lab"
@@ -76,15 +85,42 @@ $linkOnPath = Get-Command link.exe -ErrorAction SilentlyContinue
 Say "link.exe on PATH right now: $($linkOnPath -ne $null)"
 if ($linkOnPath) { Say "  resolves to: $($linkOnPath.Source)" }
 
-Say "=== Step 4 (guide, verbatim): Install Rust ==="
-Say "command: winget install --id Rustlang.Rustup -e --source winget"
+# --- FIX round 1: the guide (lib/guides/plantgpt.ts, version 9) now has a new
+# Windows step, "install-build-tools", BEFORE "install-rust". Rendered verbatim
+# via `npx tsx render-guide.mts plantgpt windows --json` against the fix
+# branch of publik and pasted here unmodified (the harness hardcodes rendered
+# steps rather than importing the guide module at runtime).
+Say "=== Step 4 (guide, verbatim): Install the C++ build tools ==="
+Say 'command: winget install --id Microsoft.VisualStudio.2022.BuildTools -e --source winget --override "--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"'
 # --accept-source-agreements/--accept-package-agreements only answer winget's OWN
 # first-run agreement prompt so the command can run at all in a non-interactive shell --
-# the same Y/N a first-time interactive user answers themselves. Nothing else added.
-winget install --id Rustlang.Rustup -e --source winget --accept-source-agreements --accept-package-agreements
-Say "winget exit code: $LASTEXITCODE"
+# the same Y/N a first-time interactive user answers themselves, identical to how
+# the pre-existing install-rust invocation below already handles it. Nothing else
+# added or changed from the guide's own command text.
+winget install --id Microsoft.VisualStudio.2022.BuildTools -e --source winget --override "--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended" --accept-source-agreements --accept-package-agreements
+Say "winget (build tools) exit code: $LASTEXITCODE"
 
-Say "=== simulating 'reopen PowerShell' (guide body's own instruction) by reloading PATH from the registry ==="
+Say "=== simulating 'reopen PowerShell' (install-rust's own new body text: 'Reopen PowerShell first so the build tools just installed are on PATH') ==="
+$machinePath = [System.Environment]::GetEnvironmentVariable('Path', 'Machine')
+$userPath = [System.Environment]::GetEnvironmentVariable('Path', 'User')
+$env:PATH = "$machinePath;$userPath"
+$linkAfterBuildTools = Get-Command link.exe -ErrorAction SilentlyContinue
+Say "link.exe on PATH after build-tools install: $($linkAfterBuildTools -ne $null)"
+if ($linkAfterBuildTools) { Say "  resolves to: $($linkAfterBuildTools.Source)" }
+$vswhereAfter = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+if (Test-Path $vswhereAfter) {
+    Say "vswhere -products * -property installationPath (after build-tools install):"
+    & $vswhereAfter -products * -property installationPath
+}
+
+Say "=== Step 5 (guide, verbatim): Install Rust ==="
+Say "command: winget install --id Rustlang.Rustup -e --source winget"
+# Same CI-only accommodation as above -- the guide's own command text is unchanged
+# from before this fix round.
+winget install --id Rustlang.Rustup -e --source winget --accept-source-agreements --accept-package-agreements
+Say "winget (rustup) exit code: $LASTEXITCODE"
+
+Say "=== simulating 'reopen PowerShell' again by reloading PATH from the registry ==="
 $machinePath = [System.Environment]::GetEnvironmentVariable('Path', 'Machine')
 $userPath = [System.Environment]::GetEnvironmentVariable('Path', 'User')
 $env:PATH = "$machinePath;$userPath"
@@ -97,7 +133,7 @@ $linkAfterRust = Get-Command link.exe -ErrorAction SilentlyContinue
 Say "link.exe on PATH after Rust install: $($linkAfterRust -ne $null)"
 if ($linkAfterRust) { Say "  resolves to: $($linkAfterRust.Source)" }
 
-Say "=== Step 5 (guide, verbatim): Get PlantGPT ==="
+Say "=== Step 6 (guide, verbatim): Get PlantGPT ==="
 Set-Location ~
 if (-not (Test-Path plantgpt/.git)) {
     git clone https://github.com/Blueturboguy07/plantgpt.git
@@ -105,14 +141,20 @@ if (-not (Test-Path plantgpt/.git)) {
 Set-Location plantgpt
 git checkout 0e2cf7ae118beee65d9a07c1659de2b2ab4b85cd
 
-Say "=== Step 6 (guide, verbatim): Build PlantGPT ==="
-Say "command: npm.cmd install; npm.cmd run tauri build"
+# FIX round 1 / cycle 2: cycle 1's CI run proved the build finishes ("Finished
+# `release` profile", "Built application at: ...\plantgpt.exe") but leaves no
+# installer, because tauri.conf.json's bundle.targets is ["app", "dmg"] --
+# both macOS-only. The guide's build command now carries an explicit
+# --bundles nsis override (same shape as the macOS branch's own --bundles app
+# override), pasted here verbatim from the fix branch's rendered guide output.
+Say "=== Step 7 (guide, verbatim): Build PlantGPT ==="
+Say "command: npm.cmd install; npm.cmd run tauri build -- --bundles nsis"
 npm.cmd install 2>&1 | Tee-Object -FilePath $buildLog
-npm.cmd run tauri build 2>&1 | Tee-Object -FilePath $buildLog -Append
+npm.cmd run tauri build -- --bundles nsis 2>&1 | Tee-Object -FilePath $buildLog -Append
 $buildExit = $LASTEXITCODE
 Say "build exit code: $buildExit"
 
-Say "=== Step 7 (guide, verbatim): Run the installer ==="
+Say "=== Step 8 (guide, verbatim): Run the installer ==="
 $installerErr = $null
 $setup = Get-ChildItem src-tauri\target\release\bundle\nsis -Filter *-setup.exe -ErrorVariable installerErr -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($setup) {
