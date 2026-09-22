@@ -13,6 +13,7 @@ import {
 import { store, uid } from "./lib/store.js";
 import { ollamaHealth, streamChat, systemPrompt, generateQuery } from "./lib/ollama.js";
 import { webSearch as ddgSearch, searchContextMessage, readTopPages, pagesContextMessage } from "./lib/search.js";
+import { isMacPlatform } from "./lib/platform.js";
 
 const isTauri = () => typeof window !== "undefined" && !!window.__TAURI_INTERNALS__;
 
@@ -246,7 +247,11 @@ export default function App() {
       const h = await ollamaHealth();
       setHealth(h);
       if (!h.running) {
-        showToast("Ollama isn't running — start it with: brew services start ollama");
+        showToast(
+          isMacPlatform()
+            ? "Ollama isn't running — start it with: brew services start ollama"
+            : "Ollama isn't running — open the Ollama app"
+        );
         return;
       }
       if (h.models.length && !h.models.includes(settings.model)) {
@@ -392,9 +397,11 @@ export default function App() {
   }
 
   const setupProblem = !health.running
-    ? { text: "Ollama isn't running.", cmd: "brew services start ollama" }
+    ? isMacPlatform()
+      ? { text: "Ollama isn't running.", verb: "Run", cmd: "brew services start ollama" }
+      : { text: "Ollama isn't running.", verb: "Open", cmd: "the Ollama app" }
     : health.models.length === 0
-      ? { text: "No local models installed yet.", cmd: "ollama pull qwen2.5:3b" }
+      ? { text: "No local models installed yet.", verb: "Run", cmd: "ollama pull qwen2.5:3b" }
       : null;
 
   const composerProps = {
@@ -473,7 +480,7 @@ export default function App() {
               {setupProblem && (
                 <div className="setup-banner">
                   <span>
-                    {setupProblem.text} Run <code>{setupProblem.cmd}</code>
+                    {setupProblem.text} {setupProblem.verb} <code>{setupProblem.cmd}</code>
                   </span>
                   <button
                     className="retry"
