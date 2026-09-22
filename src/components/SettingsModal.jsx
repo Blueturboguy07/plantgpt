@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { ollamaHealth } from "../lib/ollama.js";
+import { isMacPlatform } from "../lib/platform.js";
 
 export default function SettingsModal({ open, settings, onClose, onSave }) {
   const [draft, setDraft] = useState(settings);
@@ -48,7 +49,11 @@ export default function SettingsModal({ open, settings, onClose, onSave }) {
           </div>
           {!health.running && !checking && (
             <p className="settings-sub" style={{ marginTop: 8 }}>
-              Start it with <code style={{ userSelect: "text" }}>brew services start ollama</code>
+              {isMacPlatform() ? (
+                <>Start it with <code style={{ userSelect: "text" }}>brew services start ollama</code></>
+              ) : (
+                "Open the Ollama app"
+              )}
             </p>
           )}
           {health.running && health.models.length === 0 && (
