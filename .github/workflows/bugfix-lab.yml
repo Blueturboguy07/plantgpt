@@ -6,11 +6,13 @@ on:
 jobs:
   oracle:
     runs-on: windows-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
       - name: Run oracle
+        timeout-minutes: 40
         shell: pwsh
         run: pwsh scripts/bugfix-lab/plantgpt-20261021-1652b7.ps1

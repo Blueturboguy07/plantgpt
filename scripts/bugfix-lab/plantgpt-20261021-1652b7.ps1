@@ -2,6 +2,7 @@
 # PlantGPT desktop reports "Ollama isn't running" while Ollama serves localhost:11434.
 # Installs real Ollama, builds the real PlantGPT.exe, launches it, reads the rendered banner.
 $ErrorActionPreference = "Continue"
+$ProgressPreference = "SilentlyContinue"
 $repo = (Get-Location).Path
 $tools = Join-Path $env:RUNNER_TEMP "probe"
 New-Item -ItemType Directory -Force $tools | Out-Null
@@ -9,7 +10,10 @@ New-Item -ItemType Directory -Force $tools | Out-Null
 Write-Host "== install Ollama =="
 $setup = Join-Path $env:RUNNER_TEMP "OllamaSetup.exe"
 Invoke-WebRequest -Uri "https://ollama.com/download/OllamaSetup.exe" -OutFile $setup
-Start-Process $setup -ArgumentList "/VERYSILENT","/NORESTART","/SUPPRESSMSGBOXES" -Wait
+$inst = Start-Process $setup -ArgumentList "/VERYSILENT","/NORESTART","/SUPPRESSMSGBOXES" -PassThru
+# do NOT use -Wait: it also waits for the tray app the installer launches
+if (-not $inst.WaitForExit(300000)) { Write-Host "installer still running after 5 min; continuing" }
+Write-Host "installer exit code: $($inst.ExitCode)"
 $ollamaDir = Join-Path $env:LOCALAPPDATA "Programs\Ollama"
 $env:PATH = "$ollamaDir;$env:PATH"
 & ollama --version
