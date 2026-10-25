@@ -10,7 +10,14 @@ const isTauri = () => typeof window !== "undefined" && !!window.__TAURI_INTERNAL
 async function getFetch() {
   if (isTauri()) {
     const mod = await import("@tauri-apps/plugin-http");
-    return mod.fetch;
+    // WebView2 on Windows sends Origin: http://tauri.localhost, which Ollama's default
+    // OLLAMA_ORIGINS rejects with 403. Present an origin Ollama allows by default
+    // (needs tauri-plugin-http's "unsafe-headers" feature to be honoured).
+    return (url, init = {}) => {
+      const headers = new Headers(init.headers || {});
+      headers.set("Origin", BASE);
+      return mod.fetch(url, { ...init, headers });
+    };
   }
   return window.fetch.bind(window);
 }
