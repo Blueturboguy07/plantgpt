@@ -55,11 +55,46 @@ $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $env:RUNNER_TEMP "wv2"
 $app = Start-Process -FilePath $exe -PassThru
 Start-Sleep 5
 
+Write-Host "== diagnostics: 9222 + processes =="
+netstat -ano | Select-String ":9222"
+Get-Process plantgpt,msedgewebview2 -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,MainWindowTitle | Format-Table | Out-String | Write-Host
+try { Write-Host ("json/version -> " + (Invoke-WebRequest -Uri "http://127.0.0.1:9222/json/version" -UseBasicParsing -TimeoutSec 5).Content) } catch { Write-Host "json/version failed: $_" }
+
 Push-Location $tools
 node probe.mjs
 $code = $LASTEXITCODE
 Pop-Location
-Write-Host "probe exit code: $code"
+Write-Host "CDP probe exit code: $code"
+
+if ($code -eq 2) {
+  Write-Host "== fallback: read rendered text via UI Automation =="
+  Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+  $texts = New-Object System.Collections.Generic.List[string]
+  $rendered = $false; $renderedAt = $null
+  $deadline = (Get-Date).AddSeconds(90)
+  while ((Get-Date) -lt $deadline) {
+    $root = [System.Windows.Automation.AutomationElement]::RootElement
+    $cond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $app.Id)
+    $win = $root.FindFirst([System.Windows.Automation.TreeScope]::Children, $cond)
+    if ($win) {
+      $texts.Clear()
+      foreach ($e in $win.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)) {
+        $n = $e.Current.Name
+        if ($n) { $texts.Add($n) }
+      }
+      if (-not $rendered -and ($texts -join " | ") -match "What can I help with|Ask anything") { $rendered = $true; $renderedAt = Get-Date }
+      # ollamaHealth() runs once at mount (2.5 s timeout); wait 10 s after first render
+      if ($rendered -and ((Get-Date) - $renderedAt).TotalSeconds -ge 10) { break }
+    }
+    Start-Sleep 3
+  }
+  $all = ($texts | Select-Object -Unique) -join " | "
+  Write-Host "UIA_TEXTS: $all"
+  if (-not $rendered) { Write-Host "BUGFIX_LAB_COULD_NOT_OBSERVE (UIA saw no rendered app)"; $code = 2 }
+  elseif ($all -match "isn.t running") { Write-Host "BUGFIX_LAB_PRESENT"; $code = 1 }
+  else { Write-Host "BUGFIX_LAB_ABSENT"; $code = 0 }
+}
+Write-Host "final probe exit code: $code"
 
 Write-Host "== Ollama server.log tail =="
 $log = Join-Path $env:LOCALAPPDATA "Ollama\server.log"

@@ -8,7 +8,7 @@ import { chromium } from "playwright-core";
 
 const CDP = "http://127.0.0.1:9222";
 let browser;
-for (let i = 0; i < 60 && !browser; i++) {
+for (let i = 0; i < 15 && !browser; i++) {
   try { browser = await chromium.connectOverCDP(CDP); } catch { await new Promise((r) => setTimeout(r, 1000)); }
 }
 if (!browser) { console.log("BUGFIX_LAB_COULD_NOT_OBSERVE (CDP attach failed)"); process.exit(2); }
