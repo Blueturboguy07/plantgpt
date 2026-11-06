@@ -18,6 +18,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 exe, want_version, slug = sys.argv[1:4]
+exe = os.path.abspath(exe)  # each run starts in its temporary home folder
 out_path = sys.argv[4] if len(sys.argv) > 4 else None
 UUID4 = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 ALLOWED = {"v", "app", "install_id", "event", "app_version", "os", "arch"}
