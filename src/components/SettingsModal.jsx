@@ -33,7 +33,7 @@ export default function SettingsModal({ open, settings, onClose, onSave }) {
     <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="settings-modal">
         <h2>Settings</h2>
-        <p className="settings-sub">Everything runs locally — no accounts, no cloud, no cost.</p>
+        <p className="settings-sub">The model runs locally — no accounts, no cloud AI, no cost. The app sends anonymous usage counts (app opened, active session).</p>
 
         <div className="field">
           <label>Local engine</label>

@@ -1,6 +1,6 @@
 {
   "name": "plantgpt",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "100% local, free desktop clone of ecogpt.com — Ollama inference, DuckDuckGo grounding, TeamTrees nudges",
   "scripts": {
     "dev": "vite",

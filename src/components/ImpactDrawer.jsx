@@ -157,7 +157,7 @@ export default function ImpactDrawer({
 
                 <div className="about-h">How does PlantGPT help?</div>
                 <p className="body">Efficient ai uses 10% as many resources as big ai.</p>
-                <p className="body">This build goes further — the model runs on your own computer. Nothing leaves your machine.</p>
+                <p className="body">This build goes further — the model runs on your own computer.</p>
                 <div className="compare-row">
                   <div className="compare-card big">
                     {EMOJI_ROWS_BIG.map((r, i) => <div key={i}>{r}</div>)}
