@@ -1,0 +1,77 @@
+# publik build: the release file of one version, built from this branch and kept as a workflow artifact.
+#   macOS (Apple silicon): PlantGPT.app, the same build as scripts/build-macos.sh (`tauri build --bundles app`),
+#     but NOT signed with the Developer ID here (no certificate in CI). The release Mac signs it, notarizes it,
+#     staples it and puts it in the dmg (the next steps of scripts/build-macos.sh).
+# This workflow never creates, changes or publishes a release.
+name: publik-build
+
+on:
+  push:
+    branches: ['telemetry/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publik-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    name: macOS arm64 (PlantGPT.app, not signed)
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal
+          rustup default 1.97.1
+          rustc --version && cargo --version && uname -m
+
+      - name: Install
+        run: npm ci
+
+      # The config in the repo names the Developer ID certificate. It is not on the runner, so this build
+      # is signed ad hoc ("-"). --locked: the build must use the committed Cargo.lock as it is.
+      - name: Build the app (not signed)
+        run: npx tauri build --bundles app --config '{"bundle":{"macOS":{"signingIdentity":"-"}}}' -- --locked
+
+      - name: Pack the app (ditto keeps symlinks)
+        id: pack
+        run: |
+          app=src-tauri/target/release/bundle/macos/PlantGPT.app
+          test -d "$app" || { echo "No PlantGPT.app was produced."; exit 1; }
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"
+          exe="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
+          want="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          echo "version: $version (want $want)  bundle id: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")"
+          echo "architectures: $(lipo -archs "$app/Contents/MacOS/$exe")"
+          test "$version" = "$want" || { echo "The app version is not the version of tauri.conf.json."; exit 1; }
+          test "$(lipo -archs "$app/Contents/MacOS/$exe")" = "arm64" || { echo "The app is not an arm64 build."; exit 1; }
+          /usr/bin/ditto -c -k --keepParent "$app" PlantGPT-macos-arm64.app.zip
+          ls -l PlantGPT-macos-arm64.app.zip
+          shasum -a 256 PlantGPT-macos-arm64.app.zip
+          echo "exe=$app/Contents/MacOS/$exe" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Keep the app
+        uses: actions/upload-artifact@v4
+        with:
+          name: PlantGPT-macos-arm64-app
+          path: PlantGPT-macos-arm64.app.zip
+          if-no-files-found: error
+          compression-level: 0
+
+      # The app runs 2 times for a few seconds against a listener on the runner (never publikhq.com).
+      # The release Mac repeats this test with the signed app, so a runner fault here does not fail the build.
+      - name: Usage-count test on the runner
+        continue-on-error: true
+        run: python3 .github/scripts/publik-telemetry-smoke.py "${{ steps.pack.outputs.exe }}" "${{ steps.pack.outputs.version }}" plantgpt
