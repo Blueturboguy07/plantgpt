@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { ollamaHealth } from "../lib/ollama.js";
 import { isMacPlatform } from "../lib/platform.js";
+import { publikSetChoice } from "../lib/publik.js";
 
-export default function SettingsModal({ open, settings, onClose, onSave }) {
+export default function SettingsModal({ open, settings, onClose, onSave, provider, onProviderChange }) {
   const [draft, setDraft] = useState(settings);
   const [health, setHealth] = useState({ running: false, models: [] });
   const [checking, setChecking] = useState(false);
@@ -24,6 +25,17 @@ export default function SettingsModal({ open, settings, onClose, onSave }) {
 
   if (!open) return null;
 
+  // The answer to the sign-in gate's "Choose how to pay for AI" screen.
+  const engine = provider?.kind === "publik" ? "publik" : "own_key";
+  const pick = async (choice) => {
+    try {
+      await publikSetChoice(choice);
+    } catch {
+      /* outside the desktop app there is nothing to store */
+    }
+    onProviderChange?.();
+  };
+
   const models = health.models.length
     ? health.models
     : draft.model
@@ -34,7 +46,21 @@ export default function SettingsModal({ open, settings, onClose, onSave }) {
     <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="settings-modal">
         <h2>Settings</h2>
-        <p className="settings-sub">The model runs locally — no accounts, no cloud AI, no cost. The app sends anonymous usage counts (app opened, active session).</p>
+        <p className="settings-sub">PlantGPT opens with Sign in with publik and counts usage (app opened, active session). Replies come from your publik plan, or from Ollama on this computer at no cost.</p>
+
+        <div className="field">
+          <label>AI engine</label>
+          <div className="seg">
+            <button className={engine === "publik" ? "on" : ""} onClick={() => pick("publik")}>Your publik plan</button>
+            <button className={engine === "own_key" ? "on" : ""} onClick={() => pick("own_key")}>Ollama on this computer</button>
+          </div>
+          <p className="settings-sub" style={{ marginTop: 8 }}>
+            {engine === "publik"
+              ? "Replies come from the publik API (publik-balanced) through your plan."
+              : "Replies come from Ollama on this computer. No key is needed."}{" "}
+            <button className="link-green" onClick={() => pick(null)}>Ask again at next start</button>
+          </p>
+        </div>
 
         <div className="field">
           <label>Local engine</label>

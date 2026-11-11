@@ -7,7 +7,7 @@ name: publik-build
 
 on:
   push:
-    branches: ['telemetry/**']
+    branches: ['telemetry/**', 'signin-gate']
   workflow_dispatch:
 
 permissions:
@@ -42,6 +42,8 @@ jobs:
       # The config in the repo names the Developer ID certificate. It is not on the runner, so this build
       # is signed ad hoc ("-"). --locked: the build must use the committed Cargo.lock as it is.
       - name: Build the app (not signed)
+        env:
+          PUBLIK_APP_TOKEN: ${{ secrets.PUBLIK_APP_TOKEN }}
         run: npx tauri build --bundles app --config '{"bundle":{"macOS":{"signingIdentity":"-"}}}' -- --locked
 
       - name: Pack the app (ditto keeps symlinks)
@@ -70,8 +72,8 @@ jobs:
           if-no-files-found: error
           compression-level: 0
 
-      # The app runs 2 times for a few seconds against a listener on the runner (never publikhq.com).
-      # The release Mac repeats this test with the signed app, so a runner fault here does not fail the build.
-      - name: Usage-count test on the runner
-        continue-on-error: true
-        run: python3 .github/scripts/publik-telemetry-smoke.py "${{ steps.pack.outputs.exe }}" "${{ steps.pack.outputs.version }}" plantgpt
+      # The built app runs one time with PUBLIK_SELF_TEST=1 against a fake publik on the runner (never
+      # publikhq.com). It must print "publik self-test: ok plantgpt <version>": the sign-in gate is on the
+      # start-up path of this build. No app token is needed for the test (the release build needs one).
+      - name: publik self-test on the runner
+        run: python3 .github/scripts/publik-self-test.py "${{ steps.pack.outputs.exe }}" plantgpt "${{ steps.pack.outputs.version }}"
