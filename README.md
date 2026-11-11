@@ -3,10 +3,10 @@
 ![PlantGPT](docs/img/hero.png)
 
 Pixel-parity desktop clone of [ecogpt.com](https://ecogpt.com) ("Regenerative AI") built with
-Tauri v2 + React + Vite — except it's **100% local and free**: inference runs through
-[Ollama](https://ollama.com) on your own machine. No accounts, no keys, no cloud AI, no ads,
-no cost. The app sends anonymous usage counts and nothing about your chats
-(see [Usage counts](#usage-counts)).
+Tauri v2 + React + Vite. The app opens with **Sign in with publik**. Replies come from your
+publik plan (the publik API), or from [Ollama](https://ollama.com) on your own machine at no
+cost. No ads. The app counts usage and sends nothing about your chats
+(see [Sign in with publik](#sign-in-with-publik)).
 
 ## Install
 
@@ -16,7 +16,9 @@ no cost. The app sends anonymous usage counts and nothing about your chats
 2. Install [Ollama](https://ollama.com) and start it:
    `brew install ollama && brew services start ollama`
 3. Pull a chat model: `ollama pull qwen2.5:3b` (or `qwen2.5:7b` if you have ≥16 GB RAM).
-4. Open PlantGPT — it finds Ollama at `localhost:11434` automatically.
+4. Open PlantGPT and click **Sign in with publik**. Then choose **Get a plan** / **Connect your
+   plan** (replies through the publik API) or **Use my own key** (Ollama at `localhost:11434`,
+   no key needed). Settings can change the choice.
 
 ## What's cloned (and what's upgraded)
 
@@ -32,14 +34,25 @@ no cost. The app sends anonymous usage counts and nothing about your chats
 | Study mode | ⬆️ unlocked | tutoring system prompt (login-gated upstream) |
 | Login/ads/third-party analytics | ❌ intentionally dropped | replaced by a Settings modal (model, theme, username) |
 
-## Usage counts
+## Sign in with publik
 
-Since 0.1.1 PlantGPT sends two anonymous events to publik: `app_opened` (one time for each
-launch) and `active_session` (every 30 minutes while the app runs). Each event holds the app
-name, the app version, the operating system, the CPU type and a random install ID. No chats,
-no prompts, no file names and no user name are sent. To turn it off, set `DO_NOT_TRACK=1` in
-the environment, or put `{"usage": false}` in
+Since 0.1.2 PlantGPT opens with Sign in with publik (the publik module in
+`src-tauri/src/publik.rs`). The button opens the sign-in page in your browser, and the app
+continues when you are signed in. After the sign-in the app sends two events to publik with
+your install key: `app_opened` (one time for each launch) and `active_session` (every 30
+minutes while the app runs). Each event holds the app name, the app version, the operating
+system, the CPU type and a random install ID, so you count once across your devices. No chats,
+no prompts, no file names and no user name are sent. To turn counting off, set
+`DO_NOT_TRACK=1` in the environment, or put `{"usage": false}` in
 `~/Library/Application Support/publik/consent.json`. Details: https://publikhq.com/skills/telemetry.md
+
+With **Connect your plan**, replies stream through the publik API (`publik-balanced`) from the
+Rust side; the install key never reaches the webview. With **Use my own key**, replies come
+from Ollama as before.
+
+A release build needs the publik app token of this listing: `PUBLIK_APP_TOKEN` at build time,
+or `src-tauri/publik-app-token.txt` (public by design). A build with neither says "This build
+has no publik app token."
 
 ## Develop
 
@@ -53,6 +66,7 @@ npm run tauri dev
 ```sh
 npm run tauri build
 # → src-tauri/target/release/bundle/macos/PlantGPT.app (+ .dmg)
+# A release: scripts/build-macos.sh, with PUBLIK_APP_TOKEN set or src-tauri/publik-app-token.txt filled.
 ```
 
 ## Keyboard

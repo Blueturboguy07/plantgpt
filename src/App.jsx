@@ -12,6 +12,7 @@ import {
 } from "./components/Icons.jsx";
 import { store, uid } from "./lib/store.js";
 import { ollamaHealth, streamChat, systemPrompt, generateQuery } from "./lib/ollama.js";
+import { publikProvider, streamPublikChat, publikGenerateQuery, PUBLIK_MODEL } from "./lib/publik.js";
 import { webSearch as ddgSearch, searchContextMessage, readTopPages, pagesContextMessage } from "./lib/search.js";
 import { isMacPlatform } from "./lib/platform.js";
 
@@ -67,6 +68,12 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [health, setHealth] = useState({ running: true, models: [] });
   const [showJump, setShowJump] = useState(false);
+  // How the app pays for AI: the answer to the publik sign-in gate. "publik" streams replies
+  // through the publik API from the Rust side; anything else is Ollama on this computer.
+  const [provider, setProvider] = useState({ kind: "needs_own_key" });
+  const usePublik = provider.kind === "publik";
+  const reloadProvider = useCallback(() => publikProvider().then(setProvider), []);
+  useEffect(() => { reloadProvider(); }, [reloadProvider]);
 
   const abortRef = useRef(null);
   const threadRef = useRef(null);
@@ -187,18 +194,17 @@ export default function App() {
     patchChat(chatId, (c) => ({
       ...c,
       updatedAt: Date.now(),
-      messages: [...c.messages, { id: asstId, role: "assistant", content: "", model: settings.model }],
+      messages: [...c.messages, { id: asstId, role: "assistant", content: "", model: usePublik ? PUBLIK_MODEL : settings.model }],
     }));
     setStreaming(true);
     const ac = new AbortController();
     abortRef.current = ac;
     let acc = "";
     try {
-      for await (const chunk of streamChat({
-        model: settings.model,
-        messages: apiMessages,
-        signal: ac.signal,
-      })) {
+      const reply = usePublik
+        ? streamPublikChat({ messages: apiMessages, signal: ac.signal })
+        : streamChat({ model: settings.model, messages: apiMessages, signal: ac.signal });
+      for await (const chunk of reply) {
         acc += chunk.content;
         const snapshot = acc;
         patchChat(chatId, (c) => ({
@@ -208,7 +214,7 @@ export default function App() {
       }
     } catch (err) {
       if (err.name !== "AbortError") {
-        const msg = `⚠️ ${err.message || "Something went wrong talking to Ollama."}`;
+        const msg = `⚠️ ${err.message || (usePublik ? "Something went wrong talking to publik." : "Something went wrong talking to Ollama.")}`;
         patchChat(chatId, (c) => ({
           ...c,
           messages: c.messages.map((m) =>
@@ -231,7 +237,8 @@ export default function App() {
       if (m.role === "user") {
         const entry = { role: "user", content: m.content };
         if (m.images?.length) {
-          entry.images = m.images.map((d) => d.split(",")[1]);
+          // Ollama takes bare base64; the publik API takes the data URL as an image part.
+          entry.images = usePublik ? m.images : m.images.map((d) => d.split(",")[1]);
         }
         if (m.fileText) entry.content += `\n\n${m.fileText}`;
         msgs.push(entry);
@@ -243,7 +250,7 @@ export default function App() {
   }
 
   async function sendMessage(text) {
-    if (!health.running) {
+    if (!usePublik && !health.running) {
       const h = await ollamaHealth();
       setHealth(h);
       if (!h.running) {
@@ -258,7 +265,7 @@ export default function App() {
         setSettings((s) => ({ ...s, model: h.models[0] }));
       }
     }
-    if (!settings.model) {
+    if (!usePublik && !settings.model) {
       const h = await ollamaHealth();
       if (h.models.length) {
         setSettings((s) => ({ ...s, model: h.models[0] }));
@@ -321,7 +328,9 @@ export default function App() {
       setSearching({ query: "" });
       try {
         const lastAssistant = activeChat?.messages.filter((m) => m.role === "assistant").pop()?.content;
-        const query = await generateQuery({ model: settings.model, userText: text, lastAssistant });
+        const query = usePublik
+          ? await publikGenerateQuery({ userText: text, lastAssistant })
+          : await generateQuery({ model: settings.model, userText: text, lastAssistant });
         setSearching({ query });
         const results = await ddgSearch(query);
         if (results.length) {
@@ -396,7 +405,7 @@ export default function App() {
     showToast("Impact copied to clipboard");
   }
 
-  const setupProblem = !health.running
+  const setupProblem = usePublik ? null : !health.running
     ? isMacPlatform()
       ? { text: "Ollama isn't running.", verb: "Run", cmd: "brew services start ollama" }
       : { text: "Ollama isn't running.", verb: "Open", cmd: "the Ollama app" }
@@ -627,6 +636,8 @@ export default function App() {
         settings={settings}
         onClose={() => setSettingsOpen(false)}
         onSave={(s) => setSettings(s)}
+        provider={provider}
+        onProviderChange={reloadProvider}
       />
       {toast && <div className="toast">{toast}</div>}
     </div>

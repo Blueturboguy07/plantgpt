@@ -97,5 +97,5 @@ forest #275243/#3d7a5a/#5a9a7a · earth #8b7355/#c4a77d/#f5f0e8
 - Study mode → enabled via system prompt (real site gates it behind login).
 - Create image → disabled entry (no local image gen in v1).
 - Login/Sign in replaced by Settings (Ollama status, model picker, theme, username). All data local.
-- No ads, no third-party analytics (since 0.1.1: anonymous publik usage counts, see README). Impact stats computed locally: 1 tree/100 msgs, CO2 4g·msg, H2O 0.02L·msg, light 0.027h·msg.
+- No ads, no third-party analytics (since 0.1.2: Sign in with publik and usage counts, see README). Impact stats computed locally: 1 tree/100 msgs, CO2 4g·msg, H2O 0.02L·msg, light 0.027h·msg.
   (Local spin: running on your own machine — "the most regenerative AI is the one that never leaves your laptop".)
