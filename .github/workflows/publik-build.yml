@@ -42,6 +42,8 @@ jobs:
       # The config in the repo names the Developer ID certificate. It is not on the runner, so this build
       # is signed ad hoc ("-"). --locked: the build must use the committed Cargo.lock as it is.
       - name: Build the app (not signed)
+        env:
+          PUBLIK_APP_TOKEN: ${{ secrets.PUBLIK_APP_TOKEN }}
         run: npx tauri build --bundles app --config '{"bundle":{"macOS":{"signingIdentity":"-"}}}' -- --locked
 
       - name: Pack the app (ditto keeps symlinks)
