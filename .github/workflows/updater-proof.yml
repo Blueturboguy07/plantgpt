@@ -18,11 +18,6 @@ name: updater-proof
 
 on:
   workflow_dispatch:
-  # A workflow_dispatch workflow can be started only once it is on the default branch; the push
-  # trigger lets it run from a branch before that.
-  push:
-    branches: ['feat/updater', 'updater/**']
-    paths: ['src-tauri/**', 'src/**', 'package.json', 'package-lock.json', 'scripts/updater-*', 'scripts/build-macos.sh', 'tests/updater/**', '.github/workflows/updater-proof.yml']
 
 permissions:
   contents: read

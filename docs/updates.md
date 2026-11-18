@@ -125,7 +125,7 @@ The public key is compiled into each copy, so a new key reaches users only throu
 
 ## Test
 
-Run `updater-proof.yml` (workflow_dispatch, or a push to `feat/updater` or `updater/**`). It
+Run `updater-proof.yml` (workflow_dispatch: `gh workflow run updater-proof.yml --ref <branch>`). It
 builds 0.0.1 and 0.0.2 with the `publik-build.yml` command, signs both with one throwaway
 certificate (the runner has no Developer ID), installs 0.0.1 on `macos-latest`, and checks that
 0.0.1 refuses three bad feeds (another key, one changed byte, a version the signature does not
