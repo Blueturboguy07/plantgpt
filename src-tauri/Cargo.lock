@@ -2660,7 +2660,7 @@ checksum = "19f132c84eca552bf34cab8ec81f1c1dcc229b811638f9d283dceabe58c5569e"
 
 [[package]]
 name = "plantgpt"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "serde_json",
  "tauri",
