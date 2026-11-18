@@ -54,6 +54,12 @@ A release build needs the publik app token of this listing: `PUBLIK_APP_TOKEN` a
 or `src-tauri/publik-app-token.txt` (public by design). A build with neither says "This build
 has no publik app token."
 
+## Updates
+
+PlantGPT updates itself. It checks at start and once a day, downloads and verifies a signed
+update, and asks before it restarts. The app menu has "Check for Updates…". See
+[docs/updates.md](docs/updates.md) (releases, key, roll back).
+
 ## Develop
 
 ```sh
@@ -64,9 +70,10 @@ npm run tauri dev
 ## Build
 
 ```sh
-npm run tauri build
+npm run tauri build -- --config '{"bundle":{"createUpdaterArtifacts":false}}'
 # → src-tauri/target/release/bundle/macos/PlantGPT.app (+ .dmg)
-# A release: scripts/build-macos.sh, with PUBLIK_APP_TOKEN set or src-tauri/publik-app-token.txt filled.
+# Without that flag the build needs the update key. A release: scripts/build-macos.sh (it also
+# makes the update files; docs/updates.md), with PUBLIK_APP_TOKEN set or src-tauri/publik-app-token.txt filled.
 ```
 
 ## Keyboard

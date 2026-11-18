@@ -159,7 +159,8 @@ BINARY="$LAUNCH_COPY/Contents/MacOS/$EXECUTABLE_NAME"
 if [ -z "$EXECUTABLE_NAME" ] || [ ! -x "$BINARY" ]; then
   fail "no executable at Contents/MacOS/${EXECUTABLE_NAME:-<unset>}"
 else
-  "$BINARY" >"$STAGE/run.log" 2>&1 &
+  # No update check: an update would replace the copy under test (src-tauri/src/updates.rs).
+  PUBLIK_NO_AUTO_UPDATE=1 "$BINARY" >"$STAGE/run.log" 2>&1 &
   APP_PID=$!
   SETTLED=0
   for _ in 1 2 3 4 5 6 7 8 9 10; do

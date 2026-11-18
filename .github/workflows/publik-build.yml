@@ -1,7 +1,14 @@
-# publik build: the release file of one version, built from this branch and kept as a workflow artifact.
-#   macOS (Apple silicon): PlantGPT.app, the same build as scripts/build-macos.sh (`tauri build --bundles app`),
-#     but NOT signed with the Developer ID here (no certificate in CI). The release Mac signs it, notarizes it,
-#     staples it and puts it in the dmg (the next steps of scripts/build-macos.sh).
+# publik build: a check build of one version, built from this branch and kept as a workflow artifact.
+#   macOS (Apple silicon): PlantGPT.app, the same source and command as scripts/build-macos.sh
+#     (`tauri build --bundles app`), but signed AD HOC here (no Developer ID certificate in CI).
+# The release is NOT this artifact. The release Mac runs scripts/build-macos.sh, which builds the app
+# with the Developer ID, notarizes and staples it, and only then packs the updater bundle
+# (PlantGPT_<v>_aarch64.app.tar.gz + .sig, signed with the update key from the login keychain) and
+# latest.json from that stapled app. Then it makes the dmg. See docs/updates.md.
+# So this build makes no updater artifacts (createUpdaterArtifacts false) and needs no update key: an
+# update bundle of an ad-hoc app must never ship (it would lose the Developer ID identity and the
+# TCC permissions). A pipeline that ever re-signs this artifact for a release must run
+# scripts/updater-pack-macos.sh and scripts/updater-latest-json.mjs on the app AFTER stapling.
 # This workflow never creates, changes or publishes a release.
 name: publik-build
 
@@ -12,6 +19,10 @@ on:
 
 permissions:
   contents: read
+
+env:
+  # No automatic update check when CI starts the app (src-tauri/src/updates.rs).
+  PUBLIK_NO_AUTO_UPDATE: '1'
 
 concurrency:
   group: publik-build-${{ github.ref }}
@@ -40,17 +51,19 @@ jobs:
         run: npm ci
 
       # The config in the repo names the Developer ID certificate. It is not on the runner, so this build
-      # is signed ad hoc ("-"). --locked: the build must use the committed Cargo.lock as it is.
+      # is signed ad hoc ("-"). No updater artifacts (see the header). --locked: the build must use the
+      # committed Cargo.lock as it is.
       - name: Build the app (not signed)
         env:
           PUBLIK_APP_TOKEN: ${{ secrets.PUBLIK_APP_TOKEN }}
-        run: npx tauri build --bundles app --config '{"bundle":{"macOS":{"signingIdentity":"-"}}}' -- --locked
+        run: npx tauri build --bundles app --config '{"bundle":{"createUpdaterArtifacts":false,"macOS":{"signingIdentity":"-"}}}' -- --locked
 
       - name: Pack the app (ditto keeps symlinks)
         id: pack
         run: |
           app=src-tauri/target/release/bundle/macos/PlantGPT.app
           test -d "$app" || { echo "No PlantGPT.app was produced."; exit 1; }
+          test ! -e "$app.tar.gz" || { echo "This ad-hoc build made an updater bundle. It must never ship."; exit 1; }
           version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"
           exe="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
           want="$(node -p "require('./src-tauri/tauri.conf.json').version")"

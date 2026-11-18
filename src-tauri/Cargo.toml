@@ -11,6 +11,11 @@ tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-http = "2"
 tauri-plugin-opener = "2"
+# Signed self-update (src/updates.rs, docs/updates.md). 2.14 or later: requireSignedVersion,
+# the atomic bundle swap on macOS and the verify-before-install step.
+tauri-plugin-updater = "2.14"
+# The update timer (src/updates.rs). Already in the build through reqwest; no new crate.
+tokio = { version = "1", features = ["time"] }
 # The publik module (src/publik.rs): JSON and a UUID v4 per install. HTTP goes through the system curl.
 serde_json = "1"
 uuid = { version = "1", features = ["v4"] }
