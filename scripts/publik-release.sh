@@ -395,7 +395,13 @@ else
   gh release create "$TAG" -R "$REPO" --draft --target "$SHA" --title "$APP_NAME $V" --notes-file "$BODY" >/dev/null
   TAG_STATE="The draft $TAG stays a draft (gh release delete $TAG -R $REPO removes it)."
 fi
-REL_ID="$(gh api "repos/$REPO/releases?per_page=100" --paginate -q ".[] | select(.tag_name == \"$TAG\" and .draft) | .id")"
+# GitHub's release list can lag a few seconds behind a draft that was just made: ask up to 6 times.
+REL_ID=""
+for _try in 1 2 3 4 5 6; do
+  REL_ID="$(gh api "repos/$REPO/releases?per_page=100" --paginate -q ".[] | select(.tag_name == \"$TAG\" and .draft) | .id")"
+  [ -n "$REL_ID" ] && break
+  sleep 10
+done
 [ -n "$REL_ID" ] && [ "$(printf '%s\n' "$REL_ID" | wc -l | tr -d ' ')" = 1 ] || die "could not find the one draft $TAG"
 REMOTE="$(gh api "repos/$REPO/releases/$REL_ID" -q '.assets[] | "\(.name) \(.digest)"')"
 for a in "${ASSETS[@]}"; do
