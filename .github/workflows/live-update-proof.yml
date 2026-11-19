@@ -98,6 +98,6 @@ jobs:
           npm ci
           npm run build
 
-      - name: cargo test (updates::)
+      - name: "cargo test (updates::)"
         working-directory: src-tauri
-        run: cargo test --locked updates:: -- --nocapture
+        run: cargo test --locked "updates::" -- --nocapture
