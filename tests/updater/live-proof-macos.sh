@@ -238,6 +238,47 @@ sleep 3
 check "tcpdump runs on pktap" "pid $TCPDUMP" kill -0 "$TCPDUMP"
 
 # ------------------------------------------------------------------------------------------------
+# Starts the installed app with `open` (LaunchServices, as a double-click does). On the first launch
+# of a quarantined app, Gatekeeper holds the new process and asks "“PlantGPT” is an app downloaded
+# from the Internet. Are you sure you want to open it?"; this answers "Open". $1: a name for the
+# stdout/stderr files, or "" for none. Sets PID and GK_ASKED.
+launch_app() {
+  local name="$1" i pid=""
+  GK_ASKED=no
+  if [ -n "$name" ]; then
+    open --stdout "$OUT/$name-stdout.log" --stderr "$OUT/$name-stderr.log" "$APP" > "$OUT/$name-open.log" 2>&1 &
+  else
+    open "$APP" > /dev/null 2>&1 &
+  fi
+  for i in $(seq 1 60); do
+    if ui list | grep -q '^CoreServicesUIAgent.*downloaded from the Internet'; then
+      windows_log "Gatekeeper question"; shot "${name:-first-run}-gatekeeper-question"
+      [ "$(ui click CoreServicesUIAgent 'downloaded from the Internet' Open)" = "clicked Open" ] && GK_ASKED=yes
+      sleep 2; continue
+    fi
+    pid="$(app_pid)"
+    # Without a question the process runs at once; give the question 8 s to show.
+    if [ -n "$pid" ] && { [ "$GK_ASKED" = yes ] || [ "$i" -ge 8 ]; }; then break; fi
+    sleep 1
+  done
+  PID="$(app_pid)"
+}
+
+# The first launch after an install: the person answers Gatekeeper's question with "Open". The app
+# is quit at once, before its first update check (10 s after launch), as for a person who installed
+# N earlier and used it: the update test is the next launch. macOS marks the approved app (quarantine
+# flags 0x40 "approved", and 0x100 when it was moved out of the folder it arrived in).
+first_run() {
+  local q exe
+  launch_app ""
+  exe="$( [ -n "$PID" ] && running_exe "$PID")"
+  check "first launch: Gatekeeper asks \"… downloaded from the Internet …\" and \"Open\" answers it" "pid ${PID:-none}, ran from $exe" \
+    test "$GK_ASKED/${PID:+running}" = "yes/running"
+  quit_app; sleep 3
+  q="$(xattr -p com.apple.quarantine "$APP" 2>/dev/null)"
+  note "after the approved first launch: quarantine $q" "first launch ran from $exe"
+}
+
 # One run of the app: launch the installed N, wait for the updater, answer its question.
 #   $1 name, $2 answer to the update question: Restart | Later
 run_variant() {
@@ -245,20 +286,12 @@ run_variant() {
   log="$OUT/$name-stderr.log"
   if [ "$UPDATE" = 1 ]; then section "Variant $name: start the installed $N with open, then answer \"$answer\""
   else section "Variant $name: start the installed $N with open (no update expected)"; fi
+  first_run
   t0="$(date +%s)"
-  open --stdout "$OUT/$name-stdout.log" --stderr "$log" "$APP" > "$OUT/$name-open.log" 2>&1 &
-  # The first launch of a quarantined app: Gatekeeper asks "… downloaded from the Internet. Are you sure you want to open it?"
-  local gk_asked=no
-  for _ in $(seq 1 60); do
-    pid="$(app_pid)"; [ -n "$pid" ] && break
-    if ui list | grep -q '^CoreServicesUIAgent'; then
-      windows_log "gatekeeper question"; shot "$name-gatekeeper-question"
-      [ "$(ui click CoreServicesUIAgent "" Open)" = "clicked Open" ] && gk_asked=yes
-    fi
-    sleep 1
-  done
-  pid="$(app_pid)"
-  check "[$name] the app started (open; Gatekeeper question answered: $gk_asked)" "pid ${pid:-none}" test -n "$pid"
+  launch_app "$name"
+  pid="$PID"
+  check "[$name] the app started (open)" "pid ${pid:-none}" test -n "$pid"
+  [ "$GK_ASKED" = no ] || note "[$name] Gatekeeper asked again on the second launch (answered Open)"
   [ -n "$pid" ] || return 1
   local exe; exe="$(running_exe "$pid")"
   check "[$name] it runs from /Applications (not translocated, so the update can replace it in place)" "$exe" \
