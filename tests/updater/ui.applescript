@@ -107,23 +107,19 @@ end clickMenu
 
 on finderIcons(wname)
 	-- Rows <kind> TAB <label> TAB <x> TAB <y>, every step in its own try (errors are rows too):
-	--   finder   an item of the disk and its icon position in the window's content (Finder scripting)
-	--   bounds   the left and top of the disk's Finder window (Finder scripting)
+	--   finder   an item of the disk and its icon position in the window's content (Finder scripting;
+	--            the items are named through the volume's alias, as the AppleScript copy does)
 	--   window   the window's position on the screen; content: the position of its scroll area
 	set out to ""
-	try
-		tell application "Finder"
-			set d to disk wname
-			repeat with x in (every item of d)
-				set p to position of x
-				set out to out & "finder" & tab & (name of x) & tab & (item 1 of p) & tab & (item 2 of p) & linefeed
-			end repeat
-			set b to bounds of container window of d
-			set out to out & "bounds" & tab & wname & tab & (item 1 of b) & tab & (item 2 of b) & linefeed
-		end tell
-	on error m
-		set out to out & "error" & tab & "Finder: " & m & linefeed
-	end try
+	set vol to (POSIX file ("/Volumes/" & wname)) as alias
+	repeat with nm in {"PlantGPT.app", "Applications"}
+		try
+			tell application "Finder" to set p to position of item (nm as text) of vol
+			set out to out & "finder" & tab & nm & tab & (item 1 of p) & tab & (item 2 of p) & linefeed
+		on error m
+			set out to out & "error" & tab & "Finder " & nm & ": " & m & linefeed
+		end try
+	end repeat
 	try
 		tell application "System Events"
 			tell process "Finder"
@@ -143,38 +139,48 @@ on finderIcons(wname)
 end finderIcons
 
 on axDump(wname)
-	-- Every element of the window: ax:<role> TAB <label> TAB <center x> TAB <center y> (can be slow).
-	set out to ""
-	try
-		tell application "System Events"
-			tell process "Finder"
-				set w to window wname
-				repeat with e in (entire contents of w)
-					try
-						set c to (role of e) as text
-						set lbl to ""
-						try
-							set lbl to (name of e) as text
-						end try
-						if lbl is "" or lbl is "missing value" then
-							try
-								set lbl to (value of e) as text
-							end try
-						end if
-						if lbl is "" or lbl is "missing value" then
-							try
-								set lbl to (description of e) as text
-							end try
-						end if
-						set p to position of e
-						set z to size of e
-						set out to out & "ax:" & c & tab & lbl & tab & ((item 1 of p) + (item 1 of z) div 2) & tab & ((item 2 of p) + (item 2 of z) div 2) & linefeed
-					end try
-				end repeat
-			end tell
+	-- The window's elements, five levels deep: ax:<role> TAB <label> TAB <center x> TAB <center y>.
+	tell application "System Events"
+		tell process "Finder"
+			return my axRows(window wname, 0)
 		end tell
-	on error m
-		set out to out & "error" & tab & "System Events: " & m & linefeed
-	end try
-	return out
+	end tell
 end axDump
+
+on axRows(e, depth)
+	set out to ""
+	tell application "System Events"
+		try
+			set c to (role of e) as text
+			set lbl to ""
+			try
+				set lbl to (name of e) as text
+			end try
+			if lbl is "" or lbl is "missing value" then
+				try
+					set lbl to (value of e) as text
+				end try
+			end if
+			if lbl is "" or lbl is "missing value" then
+				try
+					set lbl to (description of e) as text
+				end try
+			end if
+			set p to position of e
+			set z to size of e
+			set out to out & "ax:" & c & tab & lbl & tab & ((item 1 of p) + (item 1 of z) div 2) & tab & ((item 2 of p) + (item 2 of z) div 2) & tab & depth & linefeed
+		on error m
+			set out to out & "error" & tab & "depth " & depth & ": " & m & linefeed
+		end try
+		if depth < 5 then
+			try
+				repeat with k in (UI elements of e)
+					set out to out & my axRows(k, depth + 1)
+				end repeat
+			on error m
+				set out to out & "error" & tab & "children at depth " & depth & ": " & m & linefeed
+			end try
+		end if
+	end tell
+	return out
+end axRows
