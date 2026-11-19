@@ -3,7 +3,8 @@
 # On macos-latest (Apple silicon; PlantGPT ships for macOS arm64 only, so there is no Intel or Windows
 # job), tests/updater/live-proof-macos.sh:
 #   1. downloads the dmg of release `from_tag` (the asset publik's listing links), quarantines it as a
-#      browser does, checks Gatekeeper ("Notarized Developer ID") and installs the app by a Finder copy;
+#      browser does, checks Gatekeeper ("Notarized Developer ID"), opens the dmg and drags the app onto
+#      Applications in its Finder window (a real mouse drag);
 #   2. records the designated requirement and writes real TCC grants (camera, microphone, screen
 #      capture, accessibility) for the bundle id, with the csreq made from that requirement;
 #   3. starts the app with `open`. The release build asks the live feed

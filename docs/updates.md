@@ -140,10 +140,12 @@ gh workflow run live-update-proof.yml -f from_tag=v0.1.3 -f expect_version=0.1.4
 ```
 
 On `macos-latest` it downloads the dmg of `from_tag` (the asset publik's listing links),
-quarantines it as a browser does, checks Gatekeeper ("Notarized Developer ID"), installs the app
-with a Finder copy, records the designated requirement and writes real TCC grants (camera,
-microphone, screen capture, accessibility) with a csreq made from it. Then it starts the app with
-`open` (and answers the Gatekeeper question with "Open"). The release build asks the live feed;
+quarantines it as a browser does, checks Gatekeeper ("Notarized Developer ID"), opens the dmg and
+drags the app onto Applications in its Finder window (a real mouse drag, as a person installs it),
+records the designated requirement and writes real TCC grants (camera, microphone, screen capture,
+accessibility) with a csreq made from it. Then it starts the app with `open`, answers Gatekeeper's
+first-launch question with "Open" and quits it, and starts it again for the test: the app must run
+from /Applications, not from an App Translocation folder. The release build asks the live feed;
 there is no test hook and no feed override. Nobody signs in: the launchd environment points the
 sign-in gate's `PUBLIK_ORIGIN` at a closed local port, so a runner registers no installs on
 publik, and the updater does not read that origin. The job waits for the updater, answers

@@ -36,7 +36,8 @@
 #               release before it (PUBLIK_RELEASE_PREV_TAG overrides which one), and stop.
 # Env: RELEASE_REPO (default Blueturboguy07/plantgpt), RELEASE_BRANCH (default main),
 #      NOTARY_PROFILE (default publik), TAURI_CLI, PUBLIK_RELEASE_WORK,
-#      PUBLIK_RELEASE_MIN_FREE_MB (default 1500).
+#      PUBLIK_RELEASE_MIN_FREE_MB (default 1500), PUBLIK_RELEASE_POLL (seconds between two status
+#      calls while CI builds; default 90).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -332,8 +333,8 @@ else
   if [ -z "$RUN" ]; then
     T0="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     gh workflow run "$WORKFLOW" -R "$REPO" --ref "$BRANCH"
-    for _ in $(seq 1 36); do
-      sleep 5
+    for _ in $(seq 1 8); do
+      sleep 15
       RUN="$(gh run list -R "$REPO" -w "$WORKFLOW" -b "$BRANCH" -e workflow_dispatch -L 10 --json databaseId,headSha,createdAt \
         -q "[.[] | select(.headSha == \"$SHA\" and .createdAt >= \"$T0\")] | sort_by(.createdAt) | last | .databaseId // empty")"
       [ -z "$RUN" ] || break
@@ -342,12 +343,14 @@ else
     echo "  started run $RUN"
   fi
   echo "  https://github.com/$REPO/actions/runs/$RUN"
-  LAST=""
-  for _ in $(seq 1 180); do
+  # One API call per poll, every PUBLIK_RELEASE_POLL seconds (default 90): the GitHub API limit is
+  # shared by everything that uses this token. Up to 90 minutes.
+  LAST=""; POLL="${PUBLIK_RELEASE_POLL:-90}"
+  for _ in $(seq 1 $((5400 / POLL))); do
     STATE="$(gh run view "$RUN" -R "$REPO" --json status,conclusion -q '"\(.status) \(.conclusion)"')"
     [ "$STATE" = "$LAST" ] || { echo "  $(date -u +%H:%M:%S) $STATE"; LAST="$STATE"; }
     case "$STATE" in completed*) break ;; esac
-    sleep 20
+    sleep "$POLL"
   done
   [ "$STATE" = "completed success" ] || die "the CI build ended '$STATE': https://github.com/$REPO/actions/runs/$RUN"
   rm -rf "$WORK/ci"; mkdir -p "$WORK/ci"
