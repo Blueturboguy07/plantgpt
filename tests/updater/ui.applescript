@@ -8,7 +8,8 @@
 --   osascript ui.applescript menu <bundle id> <menu item name prefix>
 --       brings the app to the front and clicks the item of its app menu (the menu after the Apple menu)
 --   osascript ui.applescript icons <Finder window name>
---       one line per icon in that Finder window: <name> TAB <center x> TAB <center y> (screen points)
+--       one line per element of that Finder window: <class> TAB <label> TAB <center x> TAB <center y>
+--       (screen points, the coordinates of a mouse event)
 --
 -- PlantGPT shows its questions with the dialog plugin (rfd). With no parent window, rfd uses
 -- CFUserNotificationDisplayAlert, so macOS draws them in UserNotificationCenter, not in the app.
@@ -102,17 +103,31 @@ on clickMenu(bid, prefix)
 end clickMenu
 
 on finderIcons(wname)
+	-- Every element of the window with a label and a place: <class> TAB <label> TAB <center x> TAB <center y>.
+	-- The label is the name, else the value, else the description (Finder icon views differ by release).
 	set out to ""
 	tell application "System Events"
 		tell process "Finder"
 			set w to first window whose name is wname
 			repeat with e in (entire contents of w)
 				try
-					if class of e is image then
-						set p to position of e
-						set z to size of e
-						set out to out & (name of e as text) & tab & ((item 1 of p) + (item 1 of z) div 2) & tab & ((item 2 of p) + (item 2 of z) div 2) & linefeed
+					set lbl to missing value
+					try
+						set lbl to name of e
+					end try
+					if lbl is missing value or lbl is "" then
+						try
+							set lbl to value of e
+						end try
 					end if
+					if lbl is missing value or lbl is "" then
+						try
+							set lbl to description of e
+						end try
+					end if
+					set p to position of e
+					set z to size of e
+					set out to out & (class of e as text) & tab & (lbl as text) & tab & ((item 1 of p) + (item 1 of z) div 2) & tab & ((item 2 of p) + (item 2 of z) div 2) & linefeed
 				end try
 			end repeat
 		end tell

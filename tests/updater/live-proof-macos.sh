@@ -162,7 +162,7 @@ done
 # does not copy the app, a Finder copy by AppleScript is the fallback, and the check says so.
 INSTALL_METHOD=""
 install_n() {
-  local i vol name icons from to q
+  local i vol icons from to q
   quit_app
   sudo rm -rf "$APP"
   open "$DMG"
@@ -178,16 +178,19 @@ install_n() {
   icons=""; local t_end=$((SECONDS + 90)) opened=no
   while [ "$SECONDS" -lt "$t_end" ]; do
     icons="$(ui icons "$vol" | grep -v -i 'execution error' || true)"
-    printf '%s' "$icons" | grep -q '^Applications' && break
+    printf '%s\n' "$icons" | awk -F'\t' '$2 == "Applications"' | grep -q . && break
     [ "$opened" = no ] && [ "$SECONDS" -gt $((t_end - 75)) ] && { open "$MNT"; opened=yes; }
     sleep 1
   done
   echo "dmg window icons: $(printf '%s' "$icons" | tr '\n\t' '; ')"
   printf '%s\n' "$icons" > "$OUT/dmg-window-icons.txt"
   shot dmg-window
-  name="$(printf '%s\n' "$icons" | awk -F'\t' '$1 ~ /^PlantGPT(\.app)?$/ {print $1; exit}')"
-  from="$(printf '%s\n' "$icons" | awk -F'\t' -v n="$name" '$1 == n {print $2, $3; exit}')"
-  to="$(printf '%s\n' "$icons" | awk -F'\t' '$1 == "Applications" {print $2, $3; exit}')"
+  # The icon (an image) of each item, else its name label: Finder drags an item by either.
+  pick() { printf '%s\n' "$icons" | awk -F'\t' -v re="$1" '$2 ~ re && $1 == "image" {print $3, $4; f = 1; exit} END {if (!f) exit 1}' \
+    || printf '%s\n' "$icons" | awk -F'\t' -v re="$1" '$2 ~ re && $1 != "window" {print $3, $4; exit}'; }
+  from="$(pick '^PlantGPT(\\.app)?$')"
+  to="$(pick '^Applications$')"
+  echo "drag from ($from) to ($to)"
   INSTALL_METHOD=""
   if [ -n "$from" ] && [ -n "$to" ] && [ -x "$DRAG" ]; then
     # shellcheck disable=SC2086 # two numbers each
