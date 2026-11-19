@@ -260,16 +260,17 @@ PREV_TAG="$(gh release list -R "$REPO" --exclude-drafts --limit 100 --json tagNa
 [ "$(printf '%s\n%s\n' "${PREV_TAG#v}" "$V" | sort -V | tail -1)" = "$V" ] || die "$V is not higher than the last release $PREV_TAG"
 echo "  ok    $V is higher than the last release $PREV_TAG"
 
-REL_JSON="$(gh release view "$TAG" -R "$REPO" --json isDraft,targetCommitish,tagName 2>/dev/null || true)"
+# The releases API lists drafts too (gh release view may not find a draft by its tag).
+REL_ROWS="$(gh api "repos/$REPO/releases?per_page=100" --paginate -q ".[] | select(.tag_name == \"$TAG\") | \"\(.id) \(.draft) \(.target_commitish)\"")"
 TAG_REMOTE="$(git ls-remote --tags origin "refs/tags/$TAG" | cut -f1)"
 RESUME=0
-if [ -n "$REL_JSON" ]; then
-  [ "$(printf '%s' "$REL_JSON" | node -p 'JSON.parse(require("fs").readFileSync(0,"utf8")).isDraft')" = true ] \
-    || die "$TAG is already published"
-  TARGET="$(printf '%s' "$REL_JSON" | node -p 'JSON.parse(require("fs").readFileSync(0,"utf8")).targetCommitish')"
+if [ -n "$REL_ROWS" ]; then
+  [ "$(printf '%s\n' "$REL_ROWS" | wc -l | tr -d ' ')" = 1 ] || die "more than one release has the tag $TAG: delete the extra drafts first"
+  read -r REL_ID REL_DRAFT TARGET <<< "$REL_ROWS"
+  [ "$REL_DRAFT" = true ] || die "$TAG is already published"
   [ "$TARGET" = "$SHA" ] || die "a draft $TAG exists for $TARGET, not $SHA: delete that draft or release from that commit"
   RESUME=1
-  echo "  ok    a draft $TAG of this commit exists: resuming it"
+  echo "  ok    a draft $TAG of this commit exists (release $REL_ID): resuming it"
 fi
 if [ -n "$TAG_REMOTE" ] && [ "$TAG_REMOTE" != "$SHA" ]; then die "the tag $TAG already exists on origin at $TAG_REMOTE"; fi
 [ "$RESUME" = 1 ] || [ -z "$TAG_REMOTE" ] || die "the tag $TAG already exists with no release: pick another version"
@@ -391,7 +392,9 @@ else
   gh release create "$TAG" -R "$REPO" --draft --target "$SHA" --title "$APP_NAME $V" --notes-file "$BODY" >/dev/null
   TAG_STATE="The draft $TAG stays a draft (gh release delete $TAG -R $REPO removes it)."
 fi
-REMOTE="$(gh release view "$TAG" -R "$REPO" --json assets -q '.assets[] | "\(.name) \(.digest)"')"
+REL_ID="$(gh api "repos/$REPO/releases?per_page=100" --paginate -q ".[] | select(.tag_name == \"$TAG\" and .draft) | .id")"
+[ -n "$REL_ID" ] && [ "$(printf '%s\n' "$REL_ID" | wc -l | tr -d ' ')" = 1 ] || die "could not find the one draft $TAG"
+REMOTE="$(gh api "repos/$REPO/releases/$REL_ID" -q '.assets[] | "\(.name) \(.digest)"')"
 for a in "${ASSETS[@]}"; do
   if printf '%s\n' "$REMOTE" | grep -q -x -F "$a sha256:$(sha_of "$STAGE/$a")"; then
     echo "  on the draft already: $a"

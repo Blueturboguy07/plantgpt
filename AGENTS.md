@@ -17,4 +17,4 @@
 - `src/lib/publik.js`: the webview side (`streamPublikChat`, `publikProvider`, `publikSetChoice`). `src/lib/ollama.js` is the own path (Ollama, no key).
 - `src-tauri/build.rs`: compiles the app token in from `PUBLIK_APP_TOKEN` or `src-tauri/publik-app-token.txt`.
 - `.github/scripts/publik-self-test.py`: CI proof that the built app runs the gate (`PUBLIK_SELF_TEST=1`).
-- `src-tauri/src/updates.rs`: signed self-update (feed `https://publikhq.com/api/updates/plantgpt/latest.json`). Release and key: `docs/updates.md`. The update bundle is made only from the stapled Developer ID app (`scripts/build-macos.sh`); proof: `.github/workflows/updater-proof.yml`.
+- `src-tauri/src/updates.rs`: signed self-update (feed `https://publikhq.com/api/updates/plantgpt/latest.json`). Release and key: `docs/updates.md`. The update bundle is made only from the stapled Developer ID app (`scripts/build-macos.sh`). Release: `scripts/publik-release.sh <version>` (one command). Proofs: `.github/workflows/updater-proof.yml` (signatures, local feed), `.github/workflows/live-update-proof.yml` (a release, the live feed, TCC).
