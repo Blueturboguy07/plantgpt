@@ -140,7 +140,7 @@ dmg_mount() {
   hdiutil info -plist | python3 -I -c '
 import os, plistlib, sys
 want = os.path.realpath(sys.argv[1])
-for i in plistlib.load(sys.stdin.buffer).get("images", []):
+for i in plistlib.loads(sys.stdin.buffer.read()).get("images", []):
     if os.path.realpath(i.get("image-path", "")) == want:
         for e in i.get("system-entities", []):
             if e.get("mount-point"):
@@ -169,20 +169,20 @@ install_n() {
   MNT=""
   for i in $(seq 1 90); do
     MNT="$(dmg_mount)"; [ -n "$MNT" ] && break
-    if ui list | grep -q '^CoreServicesUIAgent'; then windows_log "while the dmg opens"; fi
     sleep 1
   done
   [ -n "$MNT" ] || { windows_log "the dmg did not mount"; shot dmg-not-mounted; fail "the dmg mounts (double-click: open)"; return 1; }
   vol="$(basename "$MNT")"
   echo "mounted at $MNT ($(mount | grep -F " on $MNT " | sed 's/.*(//; s/)$//'))"
   # The dmg window opens by itself when the dmg asks for it; otherwise a person opens the volume.
-  icons=""
-  for i in $(seq 1 30); do
+  icons=""; local t_end=$((SECONDS + 90)) opened=no
+  while [ "$SECONDS" -lt "$t_end" ]; do
     icons="$(ui icons "$vol" | grep -v -i 'execution error' || true)"
     printf '%s' "$icons" | grep -q '^Applications' && break
-    [ "$i" = 8 ] && open "$MNT"
+    [ "$opened" = no ] && [ "$SECONDS" -gt $((t_end - 75)) ] && { open "$MNT"; opened=yes; }
     sleep 1
   done
+  echo "dmg window icons: $(printf '%s' "$icons" | tr '\n\t' '; ')"
   printf '%s\n' "$icons" > "$OUT/dmg-window-icons.txt"
   shot dmg-window
   name="$(printf '%s\n' "$icons" | awk -F'\t' '$1 ~ /^PlantGPT(\.app)?$/ {print $1; exit}')"
@@ -227,8 +227,18 @@ install_n() {
   check "the installed app's signature is intact and stapled" "" sh -c "codesign --verify --deep --strict '$APP' && xcrun stapler validate '$APP'"
 }
 
+# Writes the summary and ends the run with the result.
+finish() {
+  echo
+  echo "$PASS passed, $FAILS failed"
+  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+    { echo "### Live update proof: $FROM_TAG -> $EXPECT on $(sw_vers -productVersion) $(uname -m): $PASS passed, $FAILS failed"; echo; cat "$RESULTS"; } >> "$GITHUB_STEP_SUMMARY"
+  fi
+  [ "$FAILS" -eq 0 ]; exit
+}
+
 section "Install $FROM_TAG"
-install_n
+install_n || { note "the install failed: the run stops here"; finish; }
 DR_BEFORE="$(dr "$APP")"; CDHASH_N="$(cdhash "$APP")"
 { codesign -dvvv "$APP" 2>&1; codesign -d -r- "$APP" 2>&1; } > "$OUT/codesign-before.txt"
 echo "designated requirement: $DR_BEFORE"
@@ -422,7 +432,7 @@ run_variant() {
 
 run_variant restart Restart
 section "Second install of $FROM_TAG for the \"Later\" answer"
-install_n
+install_n || { note "the second install failed: the run stops here"; finish; }
 run_variant later Later
 
 # ------------------------------------------------------------------------------------------------
@@ -459,9 +469,4 @@ else
 fi
 
 curl -fsSL "$FEED" -o "$OUT/feed-after.json" || true
-echo
-echo "$PASS passed, $FAILS failed"
-if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-  { echo "### Live update proof: $FROM_TAG -> $EXPECT on $(sw_vers -productVersion) $(uname -m): $PASS passed, $FAILS failed"; echo; cat "$RESULTS"; } >> "$GITHUB_STEP_SUMMARY"
-fi
-[ "$FAILS" -eq 0 ]
+finish
