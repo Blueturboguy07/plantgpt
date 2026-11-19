@@ -20,6 +20,12 @@ tokio = { version = "1", features = ["time"] }
 serde_json = "1"
 uuid = { version = "1", features = ["v4"] }
 
+[dev-dependencies]
+# The update timer tests (src/updates.rs) run on a paused tokio clock. test-util adds no crate
+# (it turns on tokio's own rt, sync and time), so Cargo.lock does not change, and a release build
+# does not use it.
+tokio = { version = "1", features = ["test-util"] }
+
 [profile.release]
 strip = true
 lto = true

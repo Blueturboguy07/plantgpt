@@ -6,7 +6,9 @@
 # browser download would, and asks macOS the same question it asks itself at
 # double-click time.
 #
-# Usage: scripts/verify-macos.sh [--dmg <path>] [--app <path>] [--require-notarized]
+# Usage: scripts/verify-macos.sh [--dmg <path>] [--app <path>] [--require-notarized] [--no-launch]
+# --no-launch: every check except the last one, which starts the app. scripts/publik-release.sh
+# uses it on the release Mac, where no app may start.
 set -uo pipefail
 
 cd "$(dirname "$0")/.."
@@ -16,6 +18,7 @@ DMG=""
 APP=""
 REQUIRE_SIGNED=0
 REQUIRE_NOTARIZED=0
+NO_LAUNCH=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -23,6 +26,7 @@ while [ $# -gt 0 ]; do
     --app) APP="$2"; shift 2 ;;
     --require-signed) REQUIRE_SIGNED=1; shift ;;
     --require-notarized) REQUIRE_NOTARIZED=1; REQUIRE_SIGNED=1; shift ;;
+    --no-launch) NO_LAUNCH=1; shift ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -135,8 +139,11 @@ xattr -w com.apple.quarantine "0083;00000000;Safari;" "$INSTALLED" 2>/dev/null
 
 ASSESS="$(spctl --assess --type execute --verbose=4 "$INSTALLED" 2>&1)"
 if printf '%s\n' "$ASSESS" | grep -q "accepted"; then
-  pass "Gatekeeper accepts a quarantined copy"
+  pass "Gatekeeper accepts a quarantined copy ($(printf '%s\n' "$ASSESS" | sed -n 's/^source=//p' | head -1))"
   GATEKEEPER_OK=1
+  if [ "$REQUIRE_NOTARIZED" = "1" ] && ! printf '%s\n' "$ASSESS" | grep -q "^source=Notarized Developer ID"; then
+    fail "Gatekeeper did not name the source \"Notarized Developer ID\""
+  fi
 else
   GATEKEEPER_OK=0
   REASON="$(printf '%s\n' "$ASSESS" | tail -1)"
@@ -158,6 +165,8 @@ EXECUTABLE_NAME="$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" \
 BINARY="$LAUNCH_COPY/Contents/MacOS/$EXECUTABLE_NAME"
 if [ -z "$EXECUTABLE_NAME" ] || [ ! -x "$BINARY" ]; then
   fail "no executable at Contents/MacOS/${EXECUTABLE_NAME:-<unset>}"
+elif [ "$NO_LAUNCH" = "1" ]; then
+  note "the app was not started (--no-launch)"
 else
   # No update check: an update would replace the copy under test (src-tauri/src/updates.rs).
   PUBLIK_NO_AUTO_UPDATE=1 "$BINARY" >"$STAGE/run.log" 2>&1 &

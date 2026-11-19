@@ -1,0 +1,103 @@
+# Live update proof: a released PlantGPT, the live publik feed, real permissions. Never on a desk Mac.
+#
+# On macos-latest (Apple silicon; PlantGPT ships for macOS arm64 only, so there is no Intel or Windows
+# job), tests/updater/live-proof-macos.sh:
+#   1. downloads the dmg of release `from_tag` (the asset publik's listing links), quarantines it as a
+#      browser does, checks Gatekeeper ("Notarized Developer ID") and installs the app by a Finder copy;
+#   2. records the designated requirement and writes real TCC grants (camera, microphone, screen
+#      capture, accessibility) for the bundle id, with the csreq made from that requirement;
+#   3. starts the app with `open`. The release build asks the live feed
+#      https://publikhq.com/api/updates/plantgpt/latest.json. No test hook, no feed override, no sign-in;
+#   4. waits for the updater, answers "Restart" (and, after a second clean install, "Later" and then
+#      "Restart" from the menu), and checks that the app on disk, the running process and the app's own
+#      answer are `expect_version`, and that only the app downloaded the update (pktap capture);
+#   5. checks that the designated requirement is unchanged, Gatekeeper still accepts the app, and the
+#      stored csreq of each TCC grant is satisfied by the updated app (what tccd checks: no new prompt);
+#   6. clicks PlantGPT > Check for Updates… and reads the answer ("… is the latest version.").
+# With expect_version = the version of from_tag (the feed still serves N), the app must find no update.
+# The unit-tests job runs the updater unit tests (the 24-hour timer on a paused clock, the shipped config).
+# Wrong signatures are proven by updater-proof.yml (a local feed), which stays as it is.
+# Results: the job summary and the live-update-proof-macos artifact (logs, screenshots, TCC rows,
+# the network report and the pktap capture).
+name: live-update-proof
+
+on:
+  # TEMPORARY: runs on pushes to the work branch while the harness is built; removed before the merge.
+  push:
+    branches: [live-proof]
+  workflow_dispatch:
+    inputs:
+      from_tag:
+        description: Release to install first (N), for example v0.1.3
+        required: true
+        default: v0.1.3
+      expect_version:
+        description: Version the app must run after the live update (N+1); the version of from_tag for a harness run
+        required: true
+        default: 0.1.3
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-update-proof-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  macos:
+    name: Live update on macos-latest (arm64)
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Live update proof
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FROM_TAG: ${{ inputs.from_tag || 'v0.1.3' }}
+          EXPECT_VERSION: ${{ inputs.expect_version || '0.1.3' }}
+        run: bash tests/updater/live-proof-macos.sh "$FROM_TAG" "$EXPECT_VERSION" out
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: live-update-proof-macos
+          path: out/
+          retention-days: 30
+
+  unit-tests:
+    name: Updater unit tests (24-hour timer, shipped config)
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      DO_NOT_TRACK: '1'
+      PUBLIK_NO_AUTO_UPDATE: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # The toolchain of publik-build.yml.
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal
+          rustup default 1.97.1
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          shared-key: live-update-proof
+          cache-on-failure: true
+
+      # The frontend build makes dist/, which tauri::generate_context! needs to compile the app crate.
+      - name: Frontend build
+        run: |
+          npm ci
+          npm run build
+
+      - name: cargo test (updates::)
+        working-directory: src-tauri
+        run: cargo test --locked updates:: -- --nocapture
