@@ -6,8 +6,8 @@
 # Usage: tests/updater/live-proof-macos.sh <from_tag> <expect_version> <out dir>
 #
 # 1. Downloads the dmg of release <from_tag> (the asset publik's listing links), quarantines it as
-#    a browser does, checks Gatekeeper ("Notarized Developer ID"), installs the app by a Finder
-#    copy from the mounted dmg.
+#    a browser does, checks Gatekeeper ("Notarized Developer ID"), opens the dmg and drags the app
+#    onto Applications in its Finder window (a real mouse drag).
 # 2. Records the designated requirement and writes real TCC grants (camera, microphone, screen
 #    capture, accessibility) for the bundle id with a csreq made from it.
 # 3. Starts the app with `open` (LaunchServices; answers the Gatekeeper question with "Open"). The
@@ -135,30 +135,92 @@ GK_DMG="$(spctl -a -t open --context context:primary-signature -vv "$DMG" 2>&1)"
 check "Gatekeeper accepts the quarantined dmg: Notarized Developer ID" "$(echo "$GK_DMG" | tr '\n' ' ')" \
   sh -c "printf '%s\n' \"\$1\" | grep -q ': accepted' && printf '%s\n' \"\$1\" | grep -q -x 'source=Notarized Developer ID'" _ "$GK_DMG"
 
+# The mount point of the dmg, if it is mounted.
+dmg_mount() {
+  hdiutil info -plist | python3 -I -c '
+import os, plistlib, sys
+want = os.path.realpath(sys.argv[1])
+for i in plistlib.load(sys.stdin.buffer).get("images", []):
+    if os.path.realpath(i.get("image-path", "")) == want:
+        for e in i.get("system-entities", []):
+            if e.get("mount-point"):
+                print(e["mount-point"]); sys.exit()
+' "$DMG"
+}
+
+# A real mouse drag (CGEvent), as a person drags the app icon onto the Applications icon.
+DRAG="$WORK/drag"
+swiftc -O "$ROOT/tests/updater/drag.swift" -o "$DRAG" > "$OUT/drag-build.log" 2>&1 || echo "swiftc failed: $(tail -3 "$OUT/drag-build.log")"
+# Posting mouse events needs accessibility, as UI scripting does (the runner's processes have it).
+for svc in kTCCServiceAccessibility kTCCServicePostEvent; do
+  sudo sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" \
+    "INSERT OR REPLACE INTO access (service, client, client_type, auth_value, auth_reason, auth_version, indirect_object_identifier, flags) VALUES ('$svc', '$DRAG', 1, 2, 4, 1, 'UNUSED', 0);" || true
+done
+
+# Install N as a person does: double-click the downloaded dmg (DiskImageMounter mounts it; Gatekeeper
+# checks it), drag PlantGPT onto Applications in the dmg's Finder window, eject the dmg. If the drag
+# does not copy the app, a Finder copy by AppleScript is the fallback, and the check says so.
 INSTALL_METHOD=""
 install_n() {
+  local i vol name icons from to q
   quit_app
   sudo rm -rf "$APP"
-  MNT="$(mktemp -d)"
-  hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MNT" -quiet || { fail "the dmg mounts"; return 1; }
-  echo "quarantine in the mounted dmg: $(xattr -p com.apple.quarantine "$MNT/PlantGPT.app" 2>&1)"
-  # A Finder copy, as a person drags the app to Applications.
-  if with_timeout 60 osascript -e "set src to (POSIX file \"$MNT/PlantGPT.app\") as alias" -e 'set dst to (POSIX file "/Applications") as alias' \
-      -e 'tell application "Finder" to duplicate src to dst with replacing' >/dev/null 2>"$WORK/finder.err"; then
-    INSTALL_METHOD="Finder copy from the mounted dmg"
-  else
-    INSTALL_METHOD="ditto from the mounted dmg (Finder copy failed: $(head -c 120 "$WORK/finder.err"))"
-    ditto "$MNT/PlantGPT.app" "$APP"
+  open "$DMG"
+  MNT=""
+  for i in $(seq 1 90); do
+    MNT="$(dmg_mount)"; [ -n "$MNT" ] && break
+    if ui list | grep -q '^CoreServicesUIAgent'; then windows_log "while the dmg opens"; fi
+    sleep 1
+  done
+  [ -n "$MNT" ] || { windows_log "the dmg did not mount"; shot dmg-not-mounted; fail "the dmg mounts (double-click: open)"; return 1; }
+  vol="$(basename "$MNT")"
+  echo "mounted at $MNT ($(mount | grep -F " on $MNT " | sed 's/.*(//; s/)$//'))"
+  # The dmg window opens by itself when the dmg asks for it; otherwise a person opens the volume.
+  icons=""
+  for i in $(seq 1 30); do
+    icons="$(ui icons "$vol" | grep -v -i 'execution error' || true)"
+    printf '%s' "$icons" | grep -q '^Applications' && break
+    [ "$i" = 8 ] && open "$MNT"
+    sleep 1
+  done
+  printf '%s\n' "$icons" > "$OUT/dmg-window-icons.txt"
+  shot dmg-window
+  name="$(printf '%s\n' "$icons" | awk -F'\t' '$1 ~ /^PlantGPT(\.app)?$/ {print $1; exit}')"
+  from="$(printf '%s\n' "$icons" | awk -F'\t' -v n="$name" '$1 == n {print $2, $3; exit}')"
+  to="$(printf '%s\n' "$icons" | awk -F'\t' '$1 == "Applications" {print $2, $3; exit}')"
+  INSTALL_METHOD=""
+  if [ -n "$from" ] && [ -n "$to" ] && [ -x "$DRAG" ]; then
+    # shellcheck disable=SC2086 # two numbers each
+    "$DRAG" $from $to
+    for i in $(seq 1 60); do
+      [ -d "$APP" ] && codesign --verify --deep --strict "$APP" >/dev/null 2>&1 && { INSTALL_METHOD="Finder drag from the dmg window onto Applications"; break; }
+      sleep 1
+    done
+    shot after-drag
   fi
-  hdiutil detach "$MNT" -quiet; MNT=""
-  local q; q="$(xattr -p com.apple.quarantine "$APP" 2>/dev/null)"
+  if [ -z "$INSTALL_METHOD" ]; then
+    windows_log "the drag did not copy the app (icons: $(printf '%s' "$icons" | tr '\n\t' '; '))"
+    sudo rm -rf "$APP"
+    if with_timeout 60 osascript -e "set src to (POSIX file \"$MNT/PlantGPT.app\") as alias" -e 'set dst to (POSIX file "/Applications") as alias' \
+        -e 'tell application "Finder" to duplicate src to dst with replacing' >/dev/null 2>"$WORK/finder.err"; then
+      INSTALL_METHOD="Finder copy by AppleScript (FALLBACK: the drag did not copy the app)"
+    else
+      INSTALL_METHOD="ditto (FALLBACK: drag and Finder copy failed: $(head -c 120 "$WORK/finder.err"))"
+      ditto "$MNT/PlantGPT.app" "$APP"
+    fi
+  fi
+  hdiutil detach "$MNT" -quiet || hdiutil detach "$MNT" -force -quiet; MNT=""
+  q="$(xattr -p com.apple.quarantine "$APP" 2>/dev/null)"
   if [ -z "$q" ]; then
     # The copy lost the quarantine: put the dmg's back, so the first launch is a user's first launch.
     xattr -w com.apple.quarantine "$(xattr -p com.apple.quarantine "$DMG")" "$APP"
     note "the installed copy had no quarantine attribute; set it from the dmg" "$(xattr -p com.apple.quarantine "$APP")"
   fi
-  check "installed $N in /Applications ($INSTALL_METHOD)" "version $(plist "$APP" CFBundleShortVersionString), quarantine $(xattr -p com.apple.quarantine "$APP" 2>/dev/null)" \
-    test "$(plist "$APP" CFBundleShortVersionString)" = "$N"
+  case "$INSTALL_METHOD" in
+    Finder\ drag*) pass "installed $N by a Finder drag from the dmg window onto Applications" "quarantine $(xattr -p com.apple.quarantine "$APP" 2>/dev/null)" ;;
+    *) fail "installed $N by a Finder drag from the dmg window onto Applications" "$INSTALL_METHOD" ;;
+  esac
+  check "the installed app is $N" "version $(plist "$APP" CFBundleShortVersionString)" test "$(plist "$APP" CFBundleShortVersionString)" = "$N"
   local gk; gk="$(spctl -a -t exec -vv "$APP" 2>&1)"; echo "$gk" >> "$OUT/spctl-app.txt"
   check "Gatekeeper accepts the installed, quarantined app: Notarized Developer ID" "$(echo "$gk" | tr '\n' ' ')" \
     sh -c "printf '%s\n' \"\$1\" | grep -q ': accepted' && printf '%s\n' \"\$1\" | grep -q -x 'source=Notarized Developer ID'" _ "$gk"

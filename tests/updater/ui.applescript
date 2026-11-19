@@ -7,6 +7,8 @@
 --       clicks <button> in the first window of <process> whose texts contain <text>
 --   osascript ui.applescript menu <bundle id> <menu item name prefix>
 --       brings the app to the front and clicks the item of its app menu (the menu after the Apple menu)
+--   osascript ui.applescript icons <Finder window name>
+--       one line per icon in that Finder window: <name> TAB <center x> TAB <center y> (screen points)
 --
 -- PlantGPT shows its questions with the dialog plugin (rfd). With no parent window, rfd uses
 -- CFUserNotificationDisplayAlert, so macOS draws them in UserNotificationCenter, not in the app.
@@ -17,6 +19,7 @@ on run argv
 	if cmd is "list" then return listWindows()
 	if cmd is "click" then return clickButton(item 2 of argv, item 3 of argv, item 4 of argv)
 	if cmd is "menu" then return clickMenu(item 2 of argv, item 3 of argv)
+	if cmd is "icons" then return finderIcons(item 2 of argv)
 	error "unknown command " & cmd
 end run
 
@@ -97,3 +100,22 @@ on clickMenu(bid, prefix)
 		return "clicked " & n
 	end tell
 end clickMenu
+
+on finderIcons(wname)
+	set out to ""
+	tell application "System Events"
+		tell process "Finder"
+			set w to first window whose name is wname
+			repeat with e in (entire contents of w)
+				try
+					if class of e is image then
+						set p to position of e
+						set z to size of e
+						set out to out & (name of e as text) & tab & ((item 1 of p) + (item 1 of z) div 2) & tab & ((item 2 of p) + (item 2 of z) div 2) & linefeed
+					end if
+				end try
+			end repeat
+		end tell
+	end tell
+	return out
+end finderIcons
