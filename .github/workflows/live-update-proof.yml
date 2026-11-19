@@ -23,9 +23,6 @@
 name: live-update-proof
 
 on:
-  # TEMPORARY: runs on pushes to the work branch while the harness is built; removed before the merge.
-  push:
-    branches: [live-proof]
   workflow_dispatch:
     inputs:
       from_tag:
@@ -55,8 +52,8 @@ jobs:
       - name: Live update proof
         env:
           GH_TOKEN: ${{ github.token }}
-          FROM_TAG: ${{ inputs.from_tag || 'v0.1.3' }}
-          EXPECT_VERSION: ${{ inputs.expect_version || '0.1.3' }}
+          FROM_TAG: ${{ inputs.from_tag }}
+          EXPECT_VERSION: ${{ inputs.expect_version }}
         run: bash tests/updater/live-proof-macos.sh "$FROM_TAG" "$EXPECT_VERSION" out
 
       - uses: actions/upload-artifact@v4
