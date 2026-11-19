@@ -204,15 +204,21 @@ install_n() {
   echo "drag from ($from) to ($to)"
   INSTALL_METHOD=""
   if [ -n "$from" ] && [ -n "$to" ] && [ -x "$DRAG" ]; then
-    with_timeout 20 osascript -e 'tell application "Finder" to activate' >/dev/null 2>&1
-    sleep 1
-    # shellcheck disable=SC2086 # two numbers each
-    "$DRAG" $from $to
-    for i in $(seq 1 60); do
-      [ -d "$APP" ] && codesign --verify --deep --strict "$APP" >/dev/null 2>&1 && { INSTALL_METHOD="Finder drag from the dmg window onto Applications"; break; }
+    # Only the dmg's window: a Finder window left open by an earlier drop would be in the way.
+    with_timeout 20 osascript -e "tell application \"Finder\" to close (every window whose name is not \"$vol\")" \
+      -e 'tell application "Finder" to activate' >/dev/null 2>&1
+    local try
+    for try in 1 2; do
       sleep 1
+      # shellcheck disable=SC2086 # two numbers each
+      "$DRAG" $from $to
+      for i in $(seq 1 30); do
+        [ -d "$APP" ] && codesign --verify --deep --strict "$APP" >/dev/null 2>&1 && { INSTALL_METHOD="Finder drag from the dmg window onto Applications"; break; }
+        sleep 1
+      done
+      shot "after-drag-$try"
+      [ -n "$INSTALL_METHOD" ] && break
     done
-    shot after-drag
   fi
   if [ -z "$INSTALL_METHOD" ]; then
     windows_log "the drag did not copy the app (icons: $(printf '%s' "$icons" | tr '\n\t' '; '))"

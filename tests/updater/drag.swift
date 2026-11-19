@@ -16,5 +16,7 @@ for i in 1...40 {
   post(.leftMouseDragged, CGPoint(x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t))
   usleep(25_000)
 }
-usleep(800_000)
+// Let go at once: a pause over a folder opens it (spring-loading), and the drop then lands in that
+// window instead of on the folder.
+usleep(150_000)
 post(.leftMouseUp, to)
