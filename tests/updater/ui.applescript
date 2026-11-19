@@ -7,9 +7,11 @@
 --       clicks <button> in the first window of <process> whose texts contain <text>
 --   osascript ui.applescript menu <bundle id> <menu item name prefix>
 --       brings the app to the front and clicks the item of its app menu (the menu after the Apple menu)
---   osascript ui.applescript icons <Finder window name>
---       one line per element of that Finder window: <class> TAB <label> TAB <center x> TAB <center y>
---       (screen points, the coordinates of a mouse event)
+--   osascript ui.applescript icons <disk name>
+--       where the icons of the disk's Finder window are: Finder's item positions, the window's place
+--       (see finderIcons; screen points = mouse event coordinates)
+--   osascript ui.applescript axdump <window name>
+--       every accessibility element of that Finder window with its label and center
 --
 -- PlantGPT shows its questions with the dialog plugin (rfd). With no parent window, rfd uses
 -- CFUserNotificationDisplayAlert, so macOS draws them in UserNotificationCenter, not in the app.
@@ -21,6 +23,7 @@ on run argv
 	if cmd is "click" then return clickButton(item 2 of argv, item 3 of argv, item 4 of argv)
 	if cmd is "menu" then return clickMenu(item 2 of argv, item 3 of argv)
 	if cmd is "icons" then return finderIcons(item 2 of argv)
+	if cmd is "axdump" then return axDump(item 2 of argv)
 	error "unknown command " & cmd
 end run
 
@@ -103,34 +106,75 @@ on clickMenu(bid, prefix)
 end clickMenu
 
 on finderIcons(wname)
-	-- Every element of the window with a label and a place: <class> TAB <label> TAB <center x> TAB <center y>.
-	-- The label is the name, else the value, else the description (Finder icon views differ by release).
+	-- Rows <kind> TAB <label> TAB <x> TAB <y>, every step in its own try (errors are rows too):
+	--   finder   an item of the disk and its icon position in the window's content (Finder scripting)
+	--   bounds   the left and top of the disk's Finder window (Finder scripting)
+	--   window   the window's position on the screen; content: the position of its scroll area
 	set out to ""
-	tell application "System Events"
-		tell process "Finder"
-			set w to first window whose name is wname
-			repeat with e in (entire contents of w)
-				try
-					set lbl to missing value
-					try
-						set lbl to name of e
-					end try
-					if lbl is missing value or lbl is "" then
-						try
-							set lbl to value of e
-						end try
-					end if
-					if lbl is missing value or lbl is "" then
-						try
-							set lbl to description of e
-						end try
-					end if
-					set p to position of e
-					set z to size of e
-					set out to out & (class of e as text) & tab & (lbl as text) & tab & ((item 1 of p) + (item 1 of z) div 2) & tab & ((item 2 of p) + (item 2 of z) div 2) & linefeed
-				end try
+	try
+		tell application "Finder"
+			set d to disk wname
+			repeat with x in (every item of d)
+				set p to position of x
+				set out to out & "finder" & tab & (name of x) & tab & (item 1 of p) & tab & (item 2 of p) & linefeed
 			end repeat
+			set b to bounds of container window of d
+			set out to out & "bounds" & tab & wname & tab & (item 1 of b) & tab & (item 2 of b) & linefeed
 		end tell
-	end tell
+	on error m
+		set out to out & "error" & tab & "Finder: " & m & linefeed
+	end try
+	try
+		tell application "System Events"
+			tell process "Finder"
+				set w to window wname
+				set p to position of w
+				set out to out & "window" & tab & wname & tab & (item 1 of p) & tab & (item 2 of p) & linefeed
+				try
+					set p to position of scroll area 1 of w
+					set out to out & "content" & tab & wname & tab & (item 1 of p) & tab & (item 2 of p) & linefeed
+				end try
+			end tell
+		end tell
+	on error m
+		set out to out & "error" & tab & "System Events: " & m & linefeed
+	end try
 	return out
 end finderIcons
+
+on axDump(wname)
+	-- Every element of the window: ax:<role> TAB <label> TAB <center x> TAB <center y> (can be slow).
+	set out to ""
+	try
+		tell application "System Events"
+			tell process "Finder"
+				set w to window wname
+				repeat with e in (entire contents of w)
+					try
+						set c to (role of e) as text
+						set lbl to ""
+						try
+							set lbl to (name of e) as text
+						end try
+						if lbl is "" or lbl is "missing value" then
+							try
+								set lbl to (value of e) as text
+							end try
+						end if
+						if lbl is "" or lbl is "missing value" then
+							try
+								set lbl to (description of e) as text
+							end try
+						end if
+						set p to position of e
+						set z to size of e
+						set out to out & "ax:" & c & tab & lbl & tab & ((item 1 of p) + (item 1 of z) div 2) & tab & ((item 2 of p) + (item 2 of z) div 2) & linefeed
+					end try
+				end repeat
+			end tell
+		end tell
+	on error m
+		set out to out & "error" & tab & "System Events: " & m & linefeed
+	end try
+	return out
+end axDump

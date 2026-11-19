@@ -177,22 +177,35 @@ install_n() {
   # The dmg window opens by itself when the dmg asks for it; otherwise a person opens the volume.
   icons=""; local t_end=$((SECONDS + 90)) opened=no
   while [ "$SECONDS" -lt "$t_end" ]; do
-    icons="$(ui icons "$vol" | grep -v -i 'execution error' || true)"
-    printf '%s\n' "$icons" | awk -F'\t' '$2 == "Applications"' | grep -q . && break
+    icons="$(ui icons "$vol")"
+    printf '%s\n' "$icons" | awk -F'\t' '$1 == "finder" && $2 == "Applications"' | grep -q . && break
     [ "$opened" = no ] && [ "$SECONDS" -gt $((t_end - 75)) ] && { open "$MNT"; opened=yes; }
-    sleep 1
+    sleep 2
   done
-  echo "dmg window icons: $(printf '%s' "$icons" | tr '\n\t' '; ')"
-  printf '%s\n' "$icons" > "$OUT/dmg-window-icons.txt"
+  icons="$icons"$'\n'"$(ui axdump "$vol")"
+  printf '%s\n' "$icons" > "$OUT/dmg-window-ui.txt"
   shot dmg-window
-  # The icon (an image) of each item, else its name label: Finder drags an item by either.
-  pick() { printf '%s\n' "$icons" | awk -F'\t' -v re="$1" '$2 ~ re && $1 == "image" {print $3, $4; f = 1; exit} END {if (!f) exit 1}' \
-    || printf '%s\n' "$icons" | awk -F'\t' -v re="$1" '$2 ~ re && $1 != "window" {print $3, $4; exit}'; }
-  from="$(pick '^PlantGPT(\\.app)?$')"
-  to="$(pick '^Applications$')"
+  # Where to press and where to let go, in screen points: the accessibility element of the icon if
+  # it has one, else Finder's icon position plus the screen position of the window's content
+  # (its scroll area, else the window below a 28-point title bar).
+  row() { printf '%s\n' "$icons" | awk -F'\t' -v k="$1" -v re="$2" '$1 == k && $2 ~ re {print $3, $4; exit}'; }
+  at() {
+    local p o
+    p="$(row ax:AXImage "$1")"; [ -n "$p" ] && { echo "$p"; return; }
+    p="$(row finder "$1")"; [ -n "$p" ] || return 0
+    o="$(row content '.')"
+    [ -n "$o" ] || { o="$(row window '.')"; [ -n "$o" ] && o="${o% *} $(( ${o#* } + 28 ))"; }
+    [ -n "$o" ] || return 0
+    echo "$(( ${o% *} + ${p% *} )) $(( ${o#* } + ${p#* } ))"
+  }
+  from="$(at '^PlantGPT(\\.app)?$')"
+  to="$(at '^Applications$')"
+  echo "dmg window: $(printf '%s' "$icons" | grep -v '^ax:' | tr '\n\t' '; ')"
   echo "drag from ($from) to ($to)"
   INSTALL_METHOD=""
   if [ -n "$from" ] && [ -n "$to" ] && [ -x "$DRAG" ]; then
+    with_timeout 20 osascript -e 'tell application "Finder" to activate' >/dev/null 2>&1
+    sleep 1
     # shellcheck disable=SC2086 # two numbers each
     "$DRAG" $from $to
     for i in $(seq 1 60); do
