@@ -388,8 +388,15 @@ run_variant() {
   [ "$GK_ASKED" = no ] || note "[$name] Gatekeeper asked again on the second launch (answered Open)"
   [ -n "$pid" ] || return 1
   local exe; exe="$(running_exe "$pid")"
+  # A fast update is done before this line runs. The updater then has moved the old bundle from
+  # /Applications to its own temp folder (tauri_updated_app…), and the old process reports that path.
+  local exe_ok=no
+  case "$exe" in
+    "$APP/Contents/MacOS/$(plist "$APP" CFBundleExecutable)") exe_ok=yes ;;
+    */tauri_updated_app*/Contents/MacOS/*) exe_ok=yes ;;
+  esac
   check "[$name] it runs from /Applications (not translocated, so the update can replace it in place)" "$exe" \
-    test "$exe" = "$APP/Contents/MacOS/$(plist "$APP" CFBundleExecutable)"
+    test "$exe_ok" = yes
   sleep 3; windows_log "$name launched"; shot "$name-launched"
 
   # The updater: first check 10 s after launch (src-tauri/src/updates.rs), on stderr.
