@@ -16,9 +16,10 @@ cost. No ads. The app counts usage and sends nothing about your chats
 2. Install [Ollama](https://ollama.com) and start it:
    `brew install ollama && brew services start ollama`
 3. Pull a chat model: `ollama pull qwen2.5:3b` (or `qwen2.5:7b` if you have ≥16 GB RAM).
-4. Open PlantGPT and click **Sign in with publik**. Then choose **Get a plan** / **Connect your
-   plan** (replies through the publik API) or **Use my own key** (Ollama at `localhost:11434`,
-   no key needed). Settings can change the choice.
+4. Open PlantGPT and click **Sign in with publik**. After the sign-in, the app opens at once and
+   replies come through the publik API. The app asks you to get a plan only when your usage is
+   at zero. Settings > AI engine changes it to **Ollama on this computer** (`localhost:11434`,
+   no key needed).
 
 ## What's cloned (and what's upgraded)
 
@@ -46,9 +47,10 @@ no prompts, no file names and no user name are sent. To turn counting off, set
 `DO_NOT_TRACK=1` in the environment, or put `{"usage": false}` in
 `~/Library/Application Support/publik/consent.json`. Details: https://publikhq.com/skills/telemetry.md
 
-With **Connect your plan**, replies stream through the publik API (`publik-balanced`) from the
-Rust side; the install key never reaches the webview. With **Use my own key**, replies come
-from Ollama as before.
+With **Your publik plan** (the default after the sign-in), replies stream through the publik API
+(`publik-balanced`) from the Rust side; the install key never reaches the webview. When publik
+answers 402 (no usage left), the reply shows publik's message and one link to get a plan. With
+**Ollama on this computer** (Settings), replies come from Ollama as before.
 
 A release build needs the publik app token of this listing: `PUBLIK_APP_TOKEN` at build time,
 or `src-tauri/publik-app-token.txt` (public by design). A build with neither says "This build

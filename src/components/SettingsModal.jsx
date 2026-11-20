@@ -25,7 +25,7 @@ export default function SettingsModal({ open, settings, onClose, onSave, provide
 
   if (!open) return null;
 
-  // The answer to the sign-in gate's "Choose how to pay for AI" screen.
+  // The stored choice: "publik" after sign-in (the gate shows no pay screen), "own_key" (Ollama) from here.
   const engine = provider?.kind === "publik" ? "publik" : "own_key";
   const pick = async (choice) => {
     try {
@@ -57,8 +57,7 @@ export default function SettingsModal({ open, settings, onClose, onSave, provide
           <p className="settings-sub" style={{ marginTop: 8 }}>
             {engine === "publik"
               ? "Replies come from the publik API (publik-balanced) through your plan."
-              : "Replies come from Ollama on this computer. No key is needed."}{" "}
-            <button className="link-green" onClick={() => pick(null)}>Ask again at next start</button>
+              : "Replies come from Ollama on this computer. No key is needed."}
           </p>
         </div>
 

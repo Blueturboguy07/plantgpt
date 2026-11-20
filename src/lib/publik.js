@@ -21,7 +21,7 @@ export async function publikProvider() {
   }
 }
 
-// "publik", "own_key", or null (the gate asks again at the next start).
+// "publik" or "own_key" (null: the gate stores "publik" again at the next start).
 export async function publikSetChoice(choice) {
   if (!isTauri()) return;
   const { invoke } = await import("@tauri-apps/api/core");

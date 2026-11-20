@@ -25,7 +25,8 @@ pub fn publik_provider() -> Value {
     }
 }
 
-/// The answer to the gate's plan screen, changed from Settings. `None` asks again at the next start.
+/// The stored choice ("publik" from the gate after sign-in, "own_key" for Ollama), changed from
+/// Settings. `None`: the gate stores "publik" again at the next start (there is no pay screen).
 #[tauri::command]
 pub fn publik_set_choice(choice: Option<String>) -> Result<(), String> {
     match choice.as_deref() {
